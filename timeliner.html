@@ -265,6 +265,7 @@ legend { color: var(--ink2); font-size: 12px; padding: 0 4px; }
   </div>
   <div class="dlg-body">
     <div id="dayMetrics"></div>
+    <p class="hint" id="dayPrefillHint" hidden></p>
     <label class="fld" for="dayNoteTitle">Note headline</label>
     <input type="text" id="dayNoteTitle" placeholder="Short label — one or two sentences (optional)">
     <label class="fld" for="dayNoteBody">Journal entry</label>
@@ -1275,6 +1276,16 @@ function openDayEditor(day) {
   buildDayForm(day);
   dlgDay.showModal();
 }
+// Most recent value recorded for a metric strictly before `day` (used to prefill new days).
+function lastValueBefore(day, mid) {
+  for (let i = entryDays.length - 1; i >= 0; i--) {
+    const d = entryDays[i];
+    if (d >= day) continue;
+    const e = entryByDay.get(d);
+    if (e.v && e.v[mid] !== undefined) return { day: d, value: e.v[mid] };
+  }
+  return null;
+}
 function buildDayForm(day) {
   const e = entryByDay.get(day);
   const box = $('#dayMetrics');
@@ -1283,6 +1294,9 @@ function buildDayForm(day) {
     const msg = el('p', 'hint', 'No metrics defined yet — add some under “Metrics” to log values here. You can still write a note.');
     box.append(msg);
   }
+  // A day with no entry yet starts from the last recorded value of each metric,
+  // so a "same as yesterday" day is one click. Notes are never prefilled.
+  const prefillDays = new Set();
   for (const m of data.metrics) {
     const row = el('div', 'dm-row');
     row.dataset.mid = m.id;
@@ -1291,7 +1305,11 @@ function buildDayForm(day) {
     key.style.background = resolveColor(m.color);
     name.append(key, el('span', '', m.name));
     row.append(name);
-    const cur = e && e.v ? e.v[m.id] : undefined;
+    let cur = e && e.v ? e.v[m.id] : undefined;
+    if (!e) {
+      const last = lastValueBefore(day, m.id);
+      if (last) { cur = last.value; prefillDays.add(last.day); }
+    }
     if (m.type === 'scale') {
       const range = document.createElement('input');
       range.type = 'range'; range.min = m.min; range.max = m.max; range.step = m.step || 1;
@@ -1327,6 +1345,10 @@ function buildDayForm(day) {
     }
     box.append(row);
   }
+  const hint = $('#dayPrefillHint');
+  hint.hidden = prefillDays.size === 0;
+  if (prefillDays.size === 1) hint.textContent = `Values prefilled from your last entry (${fmtHuman([...prefillDays][0])}) — adjust or clear as needed.`;
+  else if (prefillDays.size > 1) hint.textContent = 'Values prefilled from your most recent entries — adjust or clear as needed.';
   $('#dayNoteTitle').value = e && e.note ? e.note.title || '' : '';
   $('#dayNoteBody').value = e && e.note ? e.note.body || '' : '';
 }
