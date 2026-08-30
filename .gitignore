@@ -1,0 +1,8 @@
+# personal timeline data never belongs in the repo
+*.timeliner.json
+*.timeliner.html
+
+# OS / editor noise
+Thumbs.db
+.DS_Store
+*.swp

@@ -1,0 +1,1979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timeliner</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E">
+<style>
+/* ============================== THEME TOKENS ============================== */
+:root {
+  color-scheme: light;
+  --surface: #fcfcfb;      /* chart surface */
+  --plane: #f9f9f7;        /* page plane */
+  --ink: #0b0b0b;          /* primary ink */
+  --ink2: #52514e;         /* secondary ink */
+  --muted: #898781;        /* axis / labels */
+  --grid: #e1e0d9;         /* hairline gridline */
+  --axis: #c3c2b7;         /* baseline / axis */
+  --border: rgba(11,11,11,0.10);
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+  --series-5: #e87ba4; --series-6: #008300; --series-7: #4a3aa7; --series-8: #e34948;
+  --accent: var(--series-1);
+  --danger: #d03b3b;
+  --shadow: 0 8px 28px rgba(11,11,11,0.14);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface: #1a1a19; --plane: #0d0d0d;
+    --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+    --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
+    --shadow: 0 8px 28px rgba(0,0,0,0.5);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #1a1a19; --plane: #0d0d0d;
+  --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835;
+  --border: rgba(255,255,255,0.10);
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
+  --shadow: 0 8px 28px rgba(0,0,0,0.5);
+}
+
+/* ============================== BASE ============================== */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--plane);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; }
+input, select, textarea { font: inherit; color: var(--ink); }
+
+/* ============================== TOP BAR ============================== */
+.topbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.brand { font-weight: 650; font-size: 14px; letter-spacing: 0.2px; margin-right: 2px; user-select: none; }
+.brand span { color: var(--accent); }
+#docTitle {
+  border: 1px solid transparent; background: transparent; border-radius: 6px;
+  padding: 4px 8px; font-size: 13px; font-weight: 550; min-width: 90px; width: 180px;
+}
+#docTitle:hover, #docTitle:focus { border-color: var(--border); background: var(--plane); outline: none; }
+.tb-group { display: flex; align-items: center; gap: 4px; padding-left: 8px; border-left: 1px solid var(--border); }
+.tb-spacer { flex: 1; }
+.btn {
+  border: 1px solid var(--border); background: transparent; border-radius: 7px;
+  padding: 5px 10px; cursor: pointer; white-space: nowrap; color: var(--ink2);
+  font-size: 12px; line-height: 1.2;
+}
+.btn:hover { background: var(--plane); color: var(--ink); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.08); color: #fff; }
+.btn.danger { color: var(--danger); border-color: var(--danger); }
+.btn.danger:hover { background: var(--danger); color: #fff; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn.iconbtn { padding: 5px 8px; }
+
+/* ============================== CHART ============================== */
+#chartwrap { position: relative; flex: 1; overflow: hidden; background: var(--surface); }
+#chart { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; outline: none; display: block; }
+
+#tooltip {
+  position: absolute; z-index: 20; pointer-events: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
+  box-shadow: var(--shadow); padding: 8px 10px; max-width: 280px;
+  font-size: 12px;
+}
+#tooltip .tt-date { font-weight: 650; margin-bottom: 5px; }
+#tooltip .tt-row { display: flex; align-items: center; gap: 7px; margin: 3px 0; }
+#tooltip .tt-key { width: 12px; height: 3px; border-radius: 2px; flex: none; }
+#tooltip .tt-name { color: var(--ink2); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tooltip .tt-val { font-weight: 650; font-variant-numeric: tabular-nums; }
+#tooltip .tt-note { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--grid); color: var(--ink); }
+#tooltip .tt-note::before { content: "✎ "; color: var(--muted); }
+#tooltip .tt-span { margin-top: 5px; display: flex; align-items: center; gap: 6px; color: var(--ink2); }
+#tooltip .tt-span i { width: 8px; height: 8px; border-radius: 3px; flex: none; }
+#tooltip .tt-hint { margin-top: 6px; color: var(--muted); font-size: 11px; }
+
+#emptyState {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  z-index: 10; pointer-events: none;
+}
+#emptyState[hidden] { display: none; }
+#emptyState .card {
+  pointer-events: auto; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: var(--shadow); padding: 26px 30px; text-align: center; max-width: 420px;
+}
+#emptyState h2 { margin: 0 0 6px; font-size: 17px; }
+#emptyState p { margin: 0 0 16px; color: var(--ink2); }
+#emptyState .row { display: flex; gap: 8px; justify-content: center; }
+
+/* ============================== STATUS BAR ============================== */
+.statusbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 5px 12px; font-size: 11px; color: var(--muted);
+  background: var(--surface); border-top: 1px solid var(--border);
+}
+.statusbar .sb-right { margin-left: auto; white-space: nowrap; }
+
+/* ============================== DIALOGS ============================== */
+dialog {
+  border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--ink);
+  box-shadow: var(--shadow); padding: 0; max-width: min(620px, 92vw); width: 520px;
+}
+dialog::backdrop { background: rgba(0,0,0,0.35); }
+dialog .dlg-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px 6px; }
+dialog h2 { margin: 0; font-size: 15px; flex: 1; }
+dialog .dlg-body { padding: 8px 18px; max-height: 68vh; overflow: auto; }
+dialog .dlg-foot { display: flex; align-items: center; gap: 8px; padding: 12px 18px 16px; }
+dialog .dlg-foot .grow { flex: 1; }
+dialog label.fld { display: block; margin: 10px 0 4px; color: var(--ink2); font-size: 12px; }
+dialog input[type="text"], dialog input[type="date"], dialog input[type="number"], dialog input[type="password"],
+dialog select, dialog textarea {
+  width: 100%; border: 1px solid var(--border); background: var(--plane);
+  border-radius: 7px; padding: 6px 8px;
+}
+dialog input:focus, dialog select:focus, dialog textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+dialog textarea { resize: vertical; min-height: 90px; }
+.inline { display: flex; gap: 8px; align-items: center; }
+.inline > * { width: auto; }
+.hint { color: var(--muted); font-size: 11px; margin-top: 4px; }
+
+/* day editor metric rows */
+.dm-row { display: grid; grid-template-columns: 130px 1fr 64px 26px; gap: 8px; align-items: center; margin: 8px 0; }
+.dm-name { display: flex; align-items: center; gap: 7px; overflow: hidden; }
+.dm-name i { width: 12px; height: 3px; border-radius: 2px; flex: none; }
+.dm-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink2); }
+.dm-row input[type="range"] { width: 100%; accent-color: var(--accent); }
+.dm-row input[type="number"] { width: 64px; padding: 4px 6px; }
+.dm-clear { border: none; background: none; color: var(--muted); cursor: pointer; border-radius: 5px; padding: 2px 5px; }
+.dm-clear:hover { color: var(--danger); background: var(--plane); }
+.dm-unset input[type="range"] { opacity: 0.35; }
+
+/* metric manager */
+.mrow { border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin: 8px 0; background: var(--plane); }
+.mrow .line1 { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.mrow input.mname { flex: 1; min-width: 110px; }
+.mrow select.mtype { width: auto; }
+.mrow .cfg { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.mrow .cfg input[type="number"] { width: 62px; }
+.mrow .cfg input.mlevels { flex: 1; min-width: 200px; }
+.mrow .cfg .cfg-lbl { color: var(--muted); font-size: 11px; }
+.mcolor { width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; flex: none; }
+.swatches { display: none; gap: 6px; margin-top: 8px; align-items: center; }
+.swatches.open { display: flex; }
+.swatch { width: 20px; height: 20px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; padding: 0; }
+.swatch.sel { outline: 2px solid var(--ink); outline-offset: 1px; }
+.swatches input[type="color"] { width: 26px; height: 24px; padding: 0 2px; border: 1px solid var(--border); border-radius: 6px; background: none; cursor: pointer; }
+.mini { border: 1px solid var(--border); background: var(--surface); border-radius: 6px; padding: 3px 7px; cursor: pointer; color: var(--ink2); }
+.mini:hover { color: var(--ink); }
+.mini.danger { color: var(--danger); }
+.mini.danger.armed { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+/* note viewer */
+.prose { line-height: 1.55; font-size: 13.5px; }
+.prose p { margin: 0 0 10px; }
+.note-date { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+/* table view */
+#dlgTable { width: min(860px, 94vw); max-width: 94vw; }
+.tblwrap { overflow: auto; max-height: 62vh; border: 1px solid var(--border); border-radius: 8px; }
+table.data { border-collapse: collapse; width: 100%; font-size: 12px; }
+table.data th, table.data td { padding: 5px 9px; border-bottom: 1px solid var(--grid); text-align: left; white-space: nowrap; }
+table.data td.num { font-variant-numeric: tabular-nums; }
+table.data th { position: sticky; top: 0; background: var(--surface); color: var(--ink2); font-weight: 600; }
+table.data tr:hover td { background: var(--plane); cursor: pointer; }
+table.data td.notecell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+
+fieldset { border: 1px solid var(--border); border-radius: 10px; margin: 12px 0; padding: 4px 12px 12px; }
+legend { color: var(--ink2); font-size: 12px; padding: 0 4px; }
+.gd-status { margin-top: 8px; font-size: 12px; color: var(--ink2); min-height: 16px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">Time<span>liner</span></div>
+  <input id="docTitle" title="Timeline title" value="My Timeline" spellcheck="false">
+  <div class="tb-group">
+    <button class="btn" id="btnToday" title="Center on today (T)">Today</button>
+    <button class="btn" id="btnFit" title="Fit all data (F)">Fit</button>
+    <button class="btn iconbtn" id="btnZoomOut" title="Zoom out (−)">−</button>
+    <button class="btn iconbtn" id="btnZoomIn" title="Zoom in (+)">+</button>
+  </div>
+  <div class="tb-group">
+    <button class="btn" id="btnAddNote" title="Add or edit today's entry (N)">+ Entry</button>
+    <button class="btn" id="btnAddSpan" title="Add a multi-day event span">+ Span</button>
+    <button class="btn" id="btnMetrics" title="Manage tracked metrics">Metrics</button>
+    <button class="btn" id="btnTable" title="All data as a table">Table</button>
+  </div>
+  <div class="tb-spacer"></div>
+  <div class="tb-group">
+    <button class="btn" id="btnOpen" title="Open a .json timeline file (Ctrl+O)">Open</button>
+    <button class="btn" id="btnSave" title="Save to file (Ctrl+S)">Save</button>
+    <button class="btn" id="btnExport" title="Export a single interactive HTML file with data embedded">Export HTML</button>
+  </div>
+  <div class="tb-group">
+    <button class="btn iconbtn" id="btnSettings" title="Settings & cloud backup">⚙</button>
+    <button class="btn iconbtn" id="btnTheme" title="Theme: auto / light / dark">◐</button>
+  </div>
+</header>
+
+<main id="chartwrap">
+  <canvas id="chart" tabindex="0"></canvas>
+  <div id="tooltip" hidden></div>
+  <div id="emptyState" hidden>
+    <div class="card">
+      <h2>Start your timeline</h2>
+      <p>Track anything day by day — moods, sleep, habits, symptoms — with notes and multi-day events on a zoomable chart.</p>
+      <div class="row">
+        <button class="btn primary" id="esMetrics">Add metrics</button>
+        <button class="btn" id="esSample">Load example</button>
+        <button class="btn" id="esOpen">Open file…</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer class="statusbar">
+  <span>Drag to pan · Scroll to zoom · Click a day to log it · Drag on the span strip to add an event</span>
+  <span class="sb-right" id="statusRight">—</span>
+</footer>
+
+<!-- ============================== DAY EDITOR ============================== -->
+<dialog id="dlgDay">
+  <div class="dlg-head">
+    <h2>Day entry</h2>
+    <input type="date" id="dayDate" style="width:auto">
+  </div>
+  <div class="dlg-body">
+    <div id="dayMetrics"></div>
+    <label class="fld" for="dayNoteTitle">Note headline</label>
+    <input type="text" id="dayNoteTitle" placeholder="Short label — one or two sentences (optional)">
+    <label class="fld" for="dayNoteBody">Journal entry</label>
+    <textarea id="dayNoteBody" rows="6" placeholder="Longer journal-style entry (optional)"></textarea>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn danger" id="dayDelete" type="button">Clear day</button>
+    <span class="grow"></span>
+    <button class="btn" id="dayCancel" type="button">Cancel</button>
+    <button class="btn primary" id="daySave" type="button">Save</button>
+  </div>
+</dialog>
+
+<!-- ============================== SPAN EDITOR ============================== -->
+<dialog id="dlgSpan">
+  <div class="dlg-head"><h2 id="spanTitle">Event span</h2></div>
+  <div class="dlg-body">
+    <label class="fld" for="spanLabel">Label</label>
+    <input type="text" id="spanLabel" placeholder="e.g. Vacation, Medication trial, Flu…">
+    <div class="inline" style="margin-top:10px">
+      <label class="fld" style="margin:0">From <input type="date" id="spanStart"></label>
+      <label class="fld" style="margin:0">To <input type="date" id="spanEnd"></label>
+    </div>
+    <label class="fld">Color</label>
+    <div class="swatches open" id="spanSwatches"></div>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn danger" id="spanDelete" type="button">Delete</button>
+    <span class="grow"></span>
+    <button class="btn" id="spanCancel" type="button">Cancel</button>
+    <button class="btn primary" id="spanSave" type="button">Save</button>
+  </div>
+</dialog>
+
+<!-- ============================== METRIC MANAGER ============================== -->
+<dialog id="dlgMetrics">
+  <div class="dlg-head"><h2>Metrics</h2></div>
+  <div class="dlg-body">
+    <p class="hint" style="margin-top:0">Each metric gets its own lane with its own scale. Use a number scale (any range) or ordered labels (worst → best).</p>
+    <div id="metricList"></div>
+    <button class="btn" id="metricAdd" type="button">+ Add metric</button>
+  </div>
+  <div class="dlg-foot">
+    <span class="grow"></span>
+    <button class="btn primary" id="metricsClose" type="button">Done</button>
+  </div>
+</dialog>
+
+<!-- ============================== NOTE VIEWER ============================== -->
+<dialog id="dlgNote">
+  <div class="dlg-head">
+    <div style="flex:1">
+      <h2 id="noteTitle">Note</h2>
+      <div class="note-date" id="noteDate"></div>
+    </div>
+  </div>
+  <div class="dlg-body"><div class="prose" id="noteBody"></div></div>
+  <div class="dlg-foot">
+    <button class="btn" id="noteEdit" type="button">Edit day</button>
+    <span class="grow"></span>
+    <button class="btn primary" id="noteClose" type="button">Close</button>
+  </div>
+</dialog>
+
+<!-- ============================== TABLE VIEW ============================== -->
+<dialog id="dlgTable">
+  <div class="dlg-head"><h2>All entries</h2></div>
+  <div class="dlg-body">
+    <div class="tblwrap"><table class="data" id="dataTable"></table></div>
+    <p class="hint">Click a row to edit that day.</p>
+  </div>
+  <div class="dlg-foot">
+    <span class="grow"></span>
+    <button class="btn primary" id="tableClose" type="button">Close</button>
+  </div>
+</dialog>
+
+<!-- ============================== SETTINGS ============================== -->
+<dialog id="dlgSettings">
+  <div class="dlg-head"><h2>Settings</h2></div>
+  <div class="dlg-body">
+    <label class="fld" for="setTitle">Timeline title</label>
+    <input type="text" id="setTitle">
+
+    <fieldset>
+      <legend>Google Drive backup</legend>
+      <p class="hint" style="margin:6px 0">Backs up the timeline JSON to a “Timeliner” folder in your Google Drive. Requires your own (free) Google OAuth Client ID — see README. Sign-in only works when the app is served over http(s), e.g. <code>npx serve</code>; the current origin is <code id="gdOrigin"></code>.</p>
+      <label class="fld" for="gdClient">OAuth Client ID</label>
+      <input type="text" id="gdClient" placeholder="1234567890-abc.apps.googleusercontent.com" spellcheck="false">
+      <div class="inline" style="margin-top:10px">
+        <button class="btn" id="gdBackup" type="button">Back up now</button>
+        <button class="btn" id="gdRestore" type="button">Restore latest</button>
+      </div>
+      <div class="gd-status" id="gdStatus"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Data</legend>
+      <div class="inline" style="margin-top:8px; flex-wrap:wrap">
+        <button class="btn" id="setSample" type="button">Load example data</button>
+        <button class="btn danger" id="setNew" type="button">New empty timeline</button>
+      </div>
+      <p class="hint">Both replace the current timeline — click twice to confirm. Work is autosaved to this browser; use Save / Export for durable files.</p>
+    </fieldset>
+  </div>
+  <div class="dlg-foot">
+    <span class="grow"></span>
+    <button class="btn primary" id="settingsClose" type="button">Close</button>
+  </div>
+</dialog>
+
+<input type="file" id="filePick" accept=".json,application/json" hidden>
+
+<script id="timeliner-data" type="application/json">null</script>
+<script>
+'use strict';
+/* ================================================================== *
+ *  Timeliner — a single-file zoomable life-tracking timeline
+ * ================================================================== */
+
+/* ------------------------------ utils ------------------------------ */
+const $ = s => document.querySelector(s);
+const DAY_MS = 86400000;
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTHS_S = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const WDAYS_S = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+const dayFromISO = iso => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return Math.round(Date.UTC(y, m - 1, d) / DAY_MS);
+};
+const isoFromDay = day => new Date(day * DAY_MS).toISOString().slice(0, 10);
+const ymd = day => {
+  const dt = new Date(day * DAY_MS);
+  return { y: dt.getUTCFullYear(), m: dt.getUTCMonth(), d: dt.getUTCDate(), wd: dt.getUTCDay() };
+};
+const monthStartDay = (y, m) => Math.round(Date.UTC(y, m, 1) / DAY_MS);
+const todayDay = () => {
+  const n = new Date();
+  return Math.round(Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()) / DAY_MS);
+};
+const fmtHuman = day => {
+  const p = ymd(day);
+  return `${WDAYS_S[p.wd]} · ${MONTHS_S[p.m]} ${p.d}, ${p.y}`;
+};
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+/* ------------------------------ palette ------------------------------ */
+const SLOT_COUNT = 8;
+let themeColors = null;
+function readTheme() {
+  const cs = getComputedStyle(document.documentElement);
+  const v = n => cs.getPropertyValue(n).trim();
+  themeColors = {
+    surface: v('--surface'), plane: v('--plane'), ink: v('--ink'), ink2: v('--ink2'),
+    muted: v('--muted'), grid: v('--grid'), axis: v('--axis'),
+    series: Array.from({ length: SLOT_COUNT }, (_, i) => v(`--series-${i + 1}`)),
+  };
+  return themeColors;
+}
+function resolveColor(c) {
+  if (!themeColors) readTheme();
+  if (typeof c === 'string' && c.startsWith('slot:')) {
+    const n = parseInt(c.slice(5), 10);
+    return themeColors.series[clamp(n - 1, 0, SLOT_COUNT - 1)];
+  }
+  return c || themeColors.series[0];
+}
+function hexLuma(hex) {
+  const h = hex.replace('#', '');
+  const f = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  const r = parseInt(f.slice(0, 2), 16), g = parseInt(f.slice(2, 4), 16), b = parseInt(f.slice(4, 6), 16);
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+function withAlpha(hex, a) {
+  const h = hex.replace('#', '');
+  const f = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  const r = parseInt(f.slice(0, 2), 16), g = parseInt(f.slice(2, 4), 16), b = parseInt(f.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+/* ------------------------------ state ------------------------------ */
+function newDoc() {
+  return {
+    app: 'timeliner', version: 1, docId: 'default',
+    title: 'My Timeline', metrics: [], entries: {}, spans: [], view: null,
+  };
+}
+let data = newDoc();
+let view = { start: todayDay() - 20, ppd: 26 };   // start = day at left edge, ppd = px per day
+const MIN_PPD = 0.02, MAX_PPD = 220;
+
+let entryDays = [];                 // sorted day numbers with entries
+let entryByDay = new Map();
+let noteDays = [];
+let spanRows = new Map();           // span.id -> row index
+let spanRowCount = 1;
+
+let hits = [];                      // clickable regions rebuilt each render
+let hover = null;                   // {x, y, day}
+let fileHandle = null, fileName = null;
+
+function reindex() {
+  entryByDay = new Map();
+  for (const iso of Object.keys(data.entries)) {
+    const e = data.entries[iso];
+    if (e) entryByDay.set(dayFromISO(iso), e);
+  }
+  entryDays = [...entryByDay.keys()].sort((a, b) => a - b);
+  noteDays = entryDays.filter(d => {
+    const n = entryByDay.get(d).note;
+    return n && ((n.title && n.title.trim()) || (n.body && n.body.trim()));
+  });
+  // greedy row assignment for overlapping spans
+  spanRows = new Map();
+  const rowEnds = [];
+  for (const sp of [...data.spans].sort((a, b) => dayFromISO(a.start) - dayFromISO(b.start))) {
+    const s = dayFromISO(sp.start);
+    let r = rowEnds.findIndex(end => end < s);
+    if (r === -1) { r = rowEnds.length; rowEnds.push(0); }
+    if (r > 3) r = r % 4;
+    rowEnds[r] = dayFromISO(sp.end);
+    spanRows.set(sp.id, r);
+  }
+  spanRowCount = clamp(rowEnds.length, 1, 4);
+}
+
+function hasAnyData() {
+  return data.metrics.length > 0 || entryDays.length > 0 || data.spans.length > 0;
+}
+
+/* ------------------------------ persistence ------------------------------ */
+const lsKey = id => `timeliner:doc:${id}`;
+let saveTimer = null;
+function touch() {
+  data.modified = new Date().toISOString();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushSave, 400);
+}
+function flushSave() {
+  clearTimeout(saveTimer);
+  data.view = { start: Math.round(view.start * 100) / 100, ppd: Math.round(view.ppd * 1000) / 1000 };
+  try {
+    localStorage.setItem(lsKey(data.docId), JSON.stringify(data));
+    localStorage.setItem('timeliner:last', data.docId);
+    const t = new Date();
+    setStatus(`Autosaved ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`);
+  } catch (e) {
+    setStatus('Autosave failed: ' + e.message);
+  }
+}
+function setStatus(msg) {
+  $('#statusRight').textContent = (fileName ? fileName + ' — ' : '') + msg;
+}
+function serialize() {
+  data.view = { start: Math.round(view.start * 100) / 100, ppd: Math.round(view.ppd * 1000) / 1000 };
+  return JSON.stringify(data, null, 2);
+}
+
+function validateDoc(d) {
+  if (!d || typeof d !== 'object') throw new Error('Not a Timeliner file');
+  if (!Array.isArray(d.metrics) || typeof d.entries !== 'object') throw new Error('Not a Timeliner file (missing metrics/entries)');
+  d.app = 'timeliner'; d.version = d.version || 1;
+  d.docId = d.docId || uid();
+  d.title = d.title || 'My Timeline';
+  d.spans = Array.isArray(d.spans) ? d.spans : [];
+  d.entries = d.entries || {};
+  for (const sp of d.spans) { sp.id = sp.id || uid(); sp.color = sp.color || 'slot:1'; }
+  for (const m of d.metrics) {
+    m.id = m.id || uid();
+    m.type = m.type === 'levels' ? 'levels' : 'scale';
+    if (m.type === 'scale') { m.min = Number.isFinite(m.min) ? m.min : 0; m.max = Number.isFinite(m.max) ? m.max : 5; m.step = m.step || 1; }
+    else m.levels = Array.isArray(m.levels) && m.levels.length >= 2 ? m.levels : ['Low', 'High'];
+    m.color = m.color || `slot:${(d.metrics.indexOf(m) % SLOT_COUNT) + 1}`;
+  }
+  return d;
+}
+
+function adopt(doc, { fit = false } = {}) {
+  data = validateDoc(doc);
+  reindex();
+  $('#docTitle').value = data.title;
+  document.title = `${data.title} — Timeliner`;
+  if (data.view && Number.isFinite(data.view.start) && Number.isFinite(data.view.ppd) && !fit) {
+    view.start = data.view.start;
+    view.ppd = clamp(data.view.ppd, MIN_PPD, MAX_PPD);
+  } else {
+    fitView();
+  }
+  flushSave();
+  updateEmptyState();
+  invalidate();
+}
+
+function updateEmptyState() { $('#emptyState').hidden = hasAnyData(); }
+
+/* ------------------------------ view helpers ------------------------------ */
+const canvas = $('#chart'), wrap = $('#chartwrap');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0;
+
+const dayAt = x => view.start + x / view.ppd;
+const xOf = day => (day - view.start) * view.ppd;          // left edge of a day cell
+const xC = day => (day + 0.5 - view.start) * view.ppd;     // center of a day cell
+
+function zoomAt(x, factor) {
+  const day = dayAt(x);
+  view.ppd = clamp(view.ppd * factor, MIN_PPD, MAX_PPD);
+  view.start = day - x / view.ppd;
+  touch();
+  invalidate();
+}
+function panBy(px) { view.start -= px / view.ppd; touch(); invalidate(); }
+function centerOn(day, ppd) {
+  if (ppd) view.ppd = clamp(ppd, MIN_PPD, MAX_PPD);
+  view.start = day - (W / 2) / view.ppd;
+  touch();
+  invalidate();
+}
+function fitView() {
+  let lo = Infinity, hi = -Infinity;
+  for (const d of entryDays) { lo = Math.min(lo, d); hi = Math.max(hi, d); }
+  for (const sp of data.spans) { lo = Math.min(lo, dayFromISO(sp.start)); hi = Math.max(hi, dayFromISO(sp.end)); }
+  const t = todayDay();
+  if (!Number.isFinite(lo)) { lo = t - 14; hi = t + 14; }
+  hi = Math.max(hi, lo + 6);
+  const pad = Math.max(2, (hi - lo) * 0.05);
+  lo -= pad; hi += pad + 1;
+  view.ppd = clamp((W || 900) / (hi - lo), MIN_PPD, MAX_PPD);
+  view.start = lo;
+  invalidate();
+}
+
+/* ------------------------------ rendering ------------------------------ */
+let rafPending = false;
+function invalidate() {
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(() => { rafPending = false; render(); });
+}
+
+function layout() {
+  const spanH = 12 + spanRowCount * 18;
+  const axisH = 46;
+  const noteH = 24;
+  return {
+    axisH,
+    spanY: axisH, spanH,
+    noteY: axisH + spanH, noteH,
+    lanesTop: axisH + spanH + noteH,
+  };
+}
+
+function haloText(g, text, x, y) {
+  g.lineWidth = 3;
+  g.strokeStyle = themeColors.surface;
+  g.strokeText(text, x, y);
+  g.fillText(text, x, y);
+}
+function rrect(g, x, y, w, h, r) {
+  r = Math.min(r, h / 2, w / 2);
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+function render() {
+  const dpr = window.devicePixelRatio || 1;
+  W = wrap.clientWidth; H = wrap.clientHeight;
+  if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+  }
+  const g = ctx;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const C = readTheme();
+  const L = layout();
+  hits = [];
+
+  g.fillStyle = C.surface;
+  g.fillRect(0, 0, W, H);
+
+  drawSpanBands(g, C, L);
+  drawLanes(g, C, L);
+  drawTimeAxis(g, C, L);
+  drawSpanStrip(g, C, L);
+  drawNoteStrip(g, C, L);
+  drawToday(g, C, L);
+  drawHover(g, C, L);
+  drawDragPreview(g, C, L);
+}
+
+/* ---- time axis with level-of-detail ---- */
+function drawTimeAxis(g, C, L) {
+  const p = view.ppd;
+  const d0 = Math.floor(dayAt(-2)), d1 = Math.ceil(dayAt(W + 2));
+  const F = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+
+  // axis surface + baseline
+  g.fillStyle = C.surface;
+  g.fillRect(0, 0, W, L.axisH);
+  g.strokeStyle = C.axis;
+  g.lineWidth = 1;
+  g.beginPath(); g.moveTo(0, L.axisH - 0.5); g.lineTo(W, L.axisH - 0.5); g.stroke();
+
+  const tick = (x, len, color) => {
+    g.strokeStyle = color; g.beginPath();
+    g.moveTo(x + 0.5, L.axisH - len); g.lineTo(x + 0.5, L.axisH); g.stroke();
+  };
+  const gridLine = (x, color) => {
+    g.strokeStyle = color; g.beginPath();
+    g.moveTo(x + 0.5, L.axisH); g.lineTo(x + 0.5, H); g.stroke();
+  };
+  // sticky period label: clamped to stay visible while its period is in view
+  const sticky = (text, xs, xe, y, font, color) => {
+    g.font = font;
+    const w = g.measureText(text).width;
+    if (xe - xs < w + 10) return;
+    const x = clamp(xs + 6, 6, xe - w - 6);
+    if (x + w < 0 || x > W) return;
+    g.fillStyle = color;
+    g.fillText(text, x, y);
+  };
+
+  g.textBaseline = 'alphabetic';
+  const yr = ymd(d0);
+
+  if (p >= 14) {
+    /* DAY MODE: day numbers, week ticks, "July 2026" majors */
+    for (let d = d0; d <= d1; d++) {
+      const x = xOf(d), pt = ymd(d);
+      const first = pt.d === 1;
+      if (first) { gridLine(x, C.grid); tick(x, 12, C.axis); }
+      else if (pt.wd === 1) tick(x, 9, C.axis);
+      else tick(x, 5, C.grid);
+      if (p >= 17 || pt.wd === 1 || first) {
+        g.font = `10px ${F}`;
+        g.fillStyle = pt.wd === 0 || pt.wd === 6 ? C.muted : C.ink2;
+        const s = String(pt.d);
+        g.fillText(s, xC(d) - g.measureText(s).width / 2, L.axisH - 16);
+      }
+    }
+    let { y, m } = yr;
+    let ms = monthStartDay(y, m);
+    while (ms < d1) {
+      const next = monthStartDay(m === 11 ? y + 1 : y, (m + 1) % 12);
+      sticky(`${MONTHS[m]} ${y}`, xOf(ms), xOf(next), 16, `600 12px ${F}`, C.ink2);
+      m = (m + 1) % 12; if (m === 0) y++;
+      ms = next;
+    }
+  } else if (p >= 2.0) {
+    /* MONTH MODE: month names, year majors */
+    if (p >= 3.5) for (let d = d0; d <= d1; d++) {
+      const pt = ymd(d);
+      if (pt.d !== 1) tick(xOf(d), pt.wd === 1 ? 7 : 4, C.grid);
+    }
+    let { y, m } = yr;
+    let ms = monthStartDay(y, m);
+    while (ms < d1) {
+      const next = monthStartDay(m === 11 ? y + 1 : y, (m + 1) % 12);
+      const x = xOf(ms);
+      if (m === 0) { gridLine(x, C.axis); tick(x, 13, C.ink2); }
+      else { gridLine(x, C.grid); tick(x, 9, C.axis); }
+      g.font = `10.5px ${F}`;
+      const label = MONTHS_S[m];
+      const wpx = xOf(next) - x;
+      if (wpx > g.measureText(label).width + 8) {
+        g.fillStyle = C.muted;
+        g.fillText(label, x + (wpx - g.measureText(label).width) / 2, L.axisH - 16);
+      }
+      m = (m + 1) % 12; if (m === 0) y++;
+      ms = next;
+    }
+    let yy = yr.y;
+    while (monthStartDay(yy, 0) < d1) {
+      sticky(String(yy), xOf(monthStartDay(yy, 0)), xOf(monthStartDay(yy + 1, 0)), 16, `600 12px ${F}`, C.ink2);
+      yy++;
+    }
+  } else {
+    /* YEAR MODE */
+    const yearW = 365.25 * p;
+    let step = 100;
+    for (const k of [1, 2, 5, 10, 20, 50, 100]) if (k * yearW >= 48) { step = k; break; }
+    if (p >= 0.55) {
+      let { y, m } = yr;
+      let ms = monthStartDay(y, m);
+      while (ms < d1) {
+        if (m !== 0) tick(xOf(ms), 4, C.grid);
+        m = (m + 1) % 12; if (m === 0) y++;
+        ms = monthStartDay(y, m);
+      }
+    }
+    for (let yy = yr.y; monthStartDay(yy, 0) < d1; yy++) {
+      const x = xOf(monthStartDay(yy, 0));
+      const major = yy % step === 0;
+      if (major) { gridLine(x, C.grid); tick(x, 12, C.axis); }
+      else tick(x, 6, C.grid);
+      if (major) {
+        g.font = `600 11px ${F}`;
+        g.fillStyle = C.ink2;
+        const s = String(yy), w = g.measureText(s).width;
+        if (yearW * step > w + 10) g.fillText(s, x + 4, L.axisH - 16);
+      }
+    }
+  }
+}
+
+/* ---- span background bands ---- */
+function drawSpanBands(g, C, L) {
+  for (const sp of data.spans) {
+    const x0 = xOf(dayFromISO(sp.start)), x1 = xOf(dayFromISO(sp.end) + 1);
+    if (x1 < 0 || x0 > W) continue;
+    const col = resolveColor(sp.color);
+    g.fillStyle = withAlpha(col, 0.09);
+    g.fillRect(x0, L.axisH, x1 - x0, H - L.axisH);
+    g.fillStyle = withAlpha(col, 0.35);
+    g.fillRect(x0, L.axisH, 1, H - L.axisH);
+    g.fillRect(x1 - 1, L.axisH, 1, H - L.axisH);
+  }
+}
+
+/* ---- span strip (interactive bars) ---- */
+function drawSpanStrip(g, C, L) {
+  g.strokeStyle = C.grid;
+  g.beginPath(); g.moveTo(0, L.spanY + L.spanH - 0.5); g.lineTo(W, L.spanY + L.spanH - 0.5); g.stroke();
+  const F = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+  for (const sp of data.spans) {
+    const row = spanRows.get(sp.id) || 0;
+    const x0 = xOf(dayFromISO(sp.start)), x1 = Math.max(xOf(dayFromISO(sp.end) + 1), x0 + 3);
+    if (x1 < -20 || x0 > W + 20) continue;
+    const y = L.spanY + 7 + row * 18, h = 14;
+    const col = resolveColor(sp.color);
+    g.fillStyle = col;
+    rrect(g, x0, y, x1 - x0, h, 7);
+    g.fill();
+    const label = sp.label || '';
+    if (label) {
+      g.font = `600 10.5px ${F}`;
+      const tw = g.measureText(label).width;
+      if (tw + 14 <= x1 - x0) {
+        g.fillStyle = hexLuma(col) > 0.55 ? '#0b0b0b' : '#ffffff';
+        g.fillText(label, x0 + 7, y + h - 4);
+      }
+    }
+    hits.push({ x: x0, y, w: x1 - x0, h, kind: 'span', span: sp });
+  }
+}
+
+/* ---- note strip ---- */
+function drawNoteStrip(g, C, L) {
+  g.strokeStyle = C.grid;
+  g.beginPath(); g.moveTo(0, L.noteY + L.noteH - 0.5); g.lineTo(W, L.noteY + L.noteH - 0.5); g.stroke();
+  const p = view.ppd;
+  const F = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+  const yMid = L.noteY + L.noteH / 2;
+  const d0 = dayAt(-30), d1 = dayAt(W + 30);
+  const visible = noteDays.filter(d => d >= d0 && d <= d1);
+
+  if (p >= 5) {
+    for (let i = 0; i < visible.length; i++) {
+      const d = visible[i];
+      const x = xC(d);
+      const e = entryByDay.get(d);
+      const title = (e.note.title || '').trim() || (e.note.body || '').trim().split('\n')[0];
+      g.fillStyle = C.ink2;
+      g.beginPath(); g.arc(x, yMid, 3.5, 0, Math.PI * 2); g.fill();
+      g.lineWidth = 2; g.strokeStyle = C.surface; g.stroke();
+      let hit = { x: x - 7, y: yMid - 8, w: 14, h: 16, kind: 'note', day: d };
+      if (p >= 48 && title) {
+        g.font = `11px ${F}`;
+        const next = i + 1 < visible.length ? xC(visible[i + 1]) : Infinity;
+        const maxW = clamp(next - x - 18, Math.min(p - 14, 60), 230);
+        let t = title;
+        while (t.length > 1 && g.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+        if (t !== title) t += '…';
+        haloText(g, t, x + 8, yMid + 3.5);
+        hit.w = 14 + 8 + g.measureText(t).width;
+      }
+      hits.push(hit);
+    }
+  } else {
+    // cluster into pixel bins
+    const bins = new Map();
+    for (const d of visible) {
+      const b = Math.round(xC(d) / 16);
+      if (!bins.has(b)) bins.set(b, []);
+      bins.get(b).push(d);
+    }
+    g.font = `600 9.5px ${F}`;
+    for (const [b, days] of bins) {
+      const x = b * 16;
+      if (days.length === 1) {
+        g.fillStyle = C.ink2;
+        g.beginPath(); g.arc(x, yMid, 3, 0, Math.PI * 2); g.fill();
+        hits.push({ x: x - 6, y: yMid - 7, w: 12, h: 14, kind: 'note', day: days[0] });
+      } else {
+        const label = String(days.length);
+        const w = Math.max(16, g.measureText(label).width + 9);
+        g.fillStyle = C.grid;
+        rrect(g, x - w / 2, yMid - 7, w, 14, 7); g.fill();
+        g.fillStyle = C.ink2;
+        g.fillText(label, x - g.measureText(label).width / 2, yMid + 3.5);
+        hits.push({ x: x - w / 2, y: yMid - 7, w, h: 14, kind: 'cluster', days });
+      }
+    }
+  }
+}
+
+/* ---- metric lanes ---- */
+function metricNorm(m, v) {
+  if (m.type === 'scale') {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+    if (m.max === m.min) return 0.5;
+    return clamp((v - m.min) / (m.max - m.min), 0, 1);
+  }
+  const i = m.levels.indexOf(v);
+  if (i === -1) return null;
+  return m.levels.length < 2 ? 0.5 : i / (m.levels.length - 1);
+}
+function fmtVal(m, v) {
+  if (v === undefined || v === null) return '—';
+  return typeof v === 'number' ? String(Math.round(v * 100) / 100) : String(v);
+}
+
+function drawLanes(g, C, L) {
+  const F = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+  const n = data.metrics.length;
+  const area = H - L.lanesTop;
+  if (n === 0) {
+    if (hasAnyData()) {
+      g.font = `12px ${F}`;
+      g.fillStyle = C.muted;
+      g.fillText('No metrics yet — open “Metrics” to add lanes.', 14, L.lanesTop + 24);
+    }
+    return;
+  }
+  const laneH = area / n;
+  const p = view.ppd;
+  const d0 = Math.floor(dayAt(-4)), d1 = Math.ceil(dayAt(W + 4));
+
+  data.metrics.forEach((m, i) => {
+    const y0 = L.lanesTop + i * laneH;
+    if (i > 0) {
+      g.strokeStyle = C.grid;
+      g.beginPath(); g.moveTo(0, y0 + 0.5); g.lineTo(W, y0 + 0.5); g.stroke();
+    }
+    const padT = Math.min(28, laneH * 0.3), padB = Math.min(14, laneH * 0.18);
+    const plotY = y0 + padT, plotH = Math.max(6, laneH - padT - padB);
+    const yFor = norm => plotY + (1 - norm) * plotH;
+    const col = resolveColor(m.color);
+
+    // y gridlines + tick labels
+    g.font = `10px ${F}`;
+    let ticks = [];
+    if (m.type === 'scale') {
+      ticks = [[0, fmtVal(m, m.min)], [1, fmtVal(m, m.max)]];
+      if (plotH >= 54) ticks.splice(1, 0, [0.5, fmtVal(m, (m.min + m.max) / 2)]);
+    } else {
+      const k = m.levels.length;
+      const gap = plotH / Math.max(1, k - 1);
+      if (gap >= 13) ticks = m.levels.map((lv, j) => [k < 2 ? 0.5 : j / (k - 1), lv]);
+      else ticks = [[0, m.levels[0]], [1, m.levels[k - 1]]];
+    }
+    for (const [norm, label] of ticks) {
+      const y = yFor(norm);
+      g.strokeStyle = C.grid; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(0, Math.round(y) + 0.5); g.lineTo(W, Math.round(y) + 0.5); g.stroke();
+      g.fillStyle = C.muted;
+      haloText(g, label, 8, y + 3);
+    }
+
+    // lane label with color key
+    g.fillStyle = col;
+    rrect(g, 8, y0 + 9, 14, 4, 2); g.fill();
+    g.font = `600 11.5px ${F}`;
+    g.fillStyle = C.ink2;
+    haloText(g, m.name || 'Metric', 27, y0 + 15);
+
+    // data: polyline segments (break on gaps > 3 days), markers at high zoom
+    const showMarkers = p >= 8;
+    const pts = [];
+    for (const d of entryDays) {
+      if (d < d0 - 4 || d > d1 + 4) continue;
+      const e = entryByDay.get(d);
+      const norm = e.v ? metricNorm(m, e.v[m.id]) : null;
+      if (norm === null || norm === undefined) continue;
+      pts.push({ d, x: xC(d), y: yFor(norm) });
+    }
+    g.lineWidth = 2; g.lineJoin = 'round'; g.lineCap = 'round';
+    g.strokeStyle = col;
+    let segStart = 0;
+    for (let j = 0; j <= pts.length; j++) {
+      const brk = j === pts.length || (j > 0 && pts[j].d - pts[j - 1].d > 3);
+      if (brk) {
+        const len = j - segStart;
+        if (len >= 2) {
+          g.beginPath();
+          g.moveTo(pts[segStart].x, pts[segStart].y);
+          for (let q = segStart + 1; q < j; q++) g.lineTo(pts[q].x, pts[q].y);
+          g.stroke();
+        }
+        segStart = j;
+      }
+    }
+    for (let j = 0; j < pts.length; j++) {
+      const lone = (j === 0 || pts[j].d - pts[j - 1].d > 3) && (j === pts.length - 1 || pts[j + 1].d - pts[j].d > 3);
+      if (!showMarkers && !lone) continue;
+      const r = showMarkers ? 4 : 2.5;
+      g.beginPath(); g.arc(pts[j].x, pts[j].y, r, 0, Math.PI * 2);
+      g.fillStyle = col; g.fill();
+      g.lineWidth = 2; g.strokeStyle = C.surface; g.stroke();
+    }
+  });
+}
+
+/* ---- today marker, hover crosshair, drag preview ---- */
+function drawToday(g, C, L) {
+  const x = xC(todayDay());
+  if (x < 0 || x > W) return;
+  const col = themeColors.series[0];
+  g.strokeStyle = withAlpha(col, 0.55);
+  g.lineWidth = 1;
+  g.setLineDash([2, 3]);
+  g.beginPath(); g.moveTo(x + 0.5, L.axisH); g.lineTo(x + 0.5, H); g.stroke();
+  g.setLineDash([]);
+  g.font = '600 9px system-ui, -apple-system, "Segoe UI", sans-serif';
+  g.fillStyle = col;
+  const w = g.measureText('TODAY').width;
+  if (x + 6 + w < W) g.fillText('TODAY', x + 5, L.axisH + 12);
+}
+
+function drawHover(g, C, L) {
+  if (!hover || drag) return;
+  const day = hover.day;
+  const x = xC(day);
+  g.strokeStyle = C.axis;
+  g.lineWidth = 1;
+  g.beginPath(); g.moveTo(x + 0.5, L.axisH); g.lineTo(x + 0.5, H); g.stroke();
+  // emphasized markers on each lane at hovered day
+  const e = entryByDay.get(day);
+  if (e && e.v && data.metrics.length) {
+    const laneH = (H - L.lanesTop) / data.metrics.length;
+    data.metrics.forEach((m, i) => {
+      const norm = metricNorm(m, e.v[m.id]);
+      if (norm === null || norm === undefined) return;
+      const y0 = L.lanesTop + i * laneH;
+      const padT = Math.min(28, laneH * 0.3), padB = Math.min(14, laneH * 0.18);
+      const y = y0 + padT + (1 - norm) * Math.max(6, laneH - padT - padB);
+      g.beginPath(); g.arc(x, y, 5.5, 0, Math.PI * 2);
+      g.fillStyle = resolveColor(m.color); g.fill();
+      g.lineWidth = 2; g.strokeStyle = C.surface; g.stroke();
+    });
+  }
+}
+
+let drag = null;   // active drag operation
+function drawDragPreview(g, C, L) {
+  if (!drag || drag.mode !== 'span-new' || drag.curDay === undefined) return;
+  const a = Math.min(drag.startDay, drag.curDay), b = Math.max(drag.startDay, drag.curDay);
+  const x0 = xOf(a), x1 = xOf(b + 1);
+  const col = themeColors.series[0];
+  g.fillStyle = withAlpha(col, 0.14);
+  g.fillRect(x0, L.axisH, x1 - x0, H - L.axisH);
+  g.strokeStyle = col;
+  g.setLineDash([4, 3]);
+  g.strokeRect(x0 + 0.5, L.axisH + 0.5, x1 - x0 - 1, H - L.axisH - 1);
+  g.setLineDash([]);
+  g.font = '600 10px system-ui, sans-serif';
+  g.fillStyle = C.ink2;
+  haloText(g, `${isoFromDay(a)} → ${isoFromDay(b)} (${b - a + 1}d)`, x0 + 5, L.axisH + 24);
+}
+
+/* ------------------------------ tooltip ------------------------------ */
+const tooltip = $('#tooltip');
+function updateTooltip(px, py, day) {
+  const e = entryByDay.get(day);
+  const spansHere = data.spans.filter(sp => dayFromISO(sp.start) <= day && day <= dayFromISO(sp.end));
+  tooltip.textContent = '';
+  tooltip.append(el('div', 'tt-date', fmtHuman(day)));
+  for (const m of data.metrics) {
+    const row = el('div', 'tt-row');
+    const key = el('i', 'tt-key');
+    key.style.background = resolveColor(m.color);
+    row.append(key, el('span', 'tt-name', m.name), el('span', 'tt-val', fmtVal(m, e && e.v ? e.v[m.id] : undefined)));
+    tooltip.append(row);
+  }
+  if (e && e.note && ((e.note.title || '').trim() || (e.note.body || '').trim())) {
+    const t = (e.note.title || '').trim() || (e.note.body || '').trim().split('\n')[0].slice(0, 80);
+    tooltip.append(el('div', 'tt-note', t));
+  }
+  for (const sp of spansHere) {
+    const row = el('div', 'tt-span');
+    const swatch = el('i');
+    swatch.style.background = resolveColor(sp.color);
+    row.append(swatch, el('span', '', sp.label || '(event)'));
+    tooltip.append(row);
+  }
+  if (!e) tooltip.append(el('div', 'tt-hint', 'Click to log this day'));
+  tooltip.hidden = false;
+  const r = tooltip.getBoundingClientRect();
+  let x = px + 16, y = py + 14;
+  if (x + r.width > W - 8) x = px - r.width - 12;
+  if (y + r.height > H - 8) y = H - r.height - 8;
+  tooltip.style.left = Math.max(4, x) + 'px';
+  tooltip.style.top = Math.max(4, y) + 'px';
+}
+
+/* ------------------------------ pointer interactions ------------------------------ */
+const pointers = new Map();
+let pinch = null;
+
+function hitAt(x, y) {
+  for (let i = hits.length - 1; i >= 0; i--) {
+    const h = hits[i];
+    if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) return h;
+  }
+  return null;
+}
+
+canvas.addEventListener('pointerdown', e => {
+  canvas.focus({ preventScroll: true });
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    pinch = { dist: Math.abs(a.x - b.x) || 1 };
+    drag = null;
+    return;
+  }
+  if (pointers.size > 2) return;
+  beginDrag(e.offsetX, e.offsetY);
+});
+
+function beginDrag(x, y) {
+  const L = layout();
+  drag = { x0: x, y0: y, moved: false };
+  const h = hitAt(x, y);
+  if (h && h.kind === 'span') {
+    const nearL = Math.abs(x - h.x) <= 6, nearR = Math.abs(x - (h.x + h.w)) <= 6;
+    drag.span = h.span;
+    drag.s0 = dayFromISO(h.span.start);
+    drag.e0 = dayFromISO(h.span.end);
+    drag.mode = nearL ? 'span-l' : nearR ? 'span-r' : 'span-move';
+  } else if (y >= L.spanY && y < L.spanY + L.spanH) {
+    drag.mode = 'span-new';
+    drag.startDay = Math.floor(dayAt(x));
+  } else {
+    drag.mode = 'pan';
+    drag.view0 = view.start;
+  }
+}
+
+canvas.addEventListener('pointermove', e => {
+  const x = e.offsetX, y = e.offsetY;
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x, y });
+
+  if (pinch && pointers.size >= 2) {
+    const [a, b] = [...pointers.values()];
+    const dist = Math.abs(a.x - b.x) || 1;
+    const mid = (a.x + b.x) / 2;
+    zoomAt(mid, dist / pinch.dist);
+    pinch.dist = dist;
+    return;
+  }
+  if (drag) {
+    if (Math.abs(x - drag.x0) + Math.abs(y - drag.y0) > 3) drag.moved = true;
+    if (!drag.moved) return;
+    tooltip.hidden = true;
+    if (drag.mode === 'pan') {
+      view.start = drag.view0 - (x - drag.x0) / view.ppd;
+      invalidate();
+    } else if (drag.mode === 'span-new') {
+      drag.curDay = Math.floor(dayAt(x));
+      invalidate();
+    } else if (drag.mode === 'span-move') {
+      const delta = Math.round((x - drag.x0) / view.ppd);
+      drag.span.start = isoFromDay(drag.s0 + delta);
+      drag.span.end = isoFromDay(drag.e0 + delta);
+      invalidate();
+    } else if (drag.mode === 'span-l' || drag.mode === 'span-r') {
+      const d = Math.floor(dayAt(x));
+      let s = drag.mode === 'span-l' ? d : drag.s0;
+      let en = drag.mode === 'span-r' ? d : drag.e0;
+      if (s > en) [s, en] = [en, s];
+      drag.span.start = isoFromDay(s);
+      drag.span.end = isoFromDay(en);
+      invalidate();
+    }
+    return;
+  }
+  // hover (no drag)
+  const day = Math.floor(dayAt(x));
+  hover = { x, y, day };
+  const h = hitAt(x, y);
+  const L = layout();
+  if (h && h.kind === 'span') {
+    const nearEdge = Math.abs(x - h.x) <= 6 || Math.abs(x - (h.x + h.w)) <= 6;
+    canvas.style.cursor = nearEdge ? 'ew-resize' : 'grab';
+  } else if (h) canvas.style.cursor = 'pointer';
+  else if (y < L.axisH) canvas.style.cursor = 'grab';
+  else canvas.style.cursor = 'crosshair';
+  if (e.pointerType === 'mouse' || e.pointerType === 'pen') updateTooltip(x, y, day);
+  invalidate();
+});
+
+canvas.addEventListener('pointerleave', () => {
+  hover = null;
+  tooltip.hidden = true;
+  invalidate();
+});
+
+function endDrag(x, y) {
+  const d = drag;
+  drag = null;
+  if (!d) return;
+  if (!d.moved) {
+    const h = hitAt(x, y);
+    const L = layout();
+    if (h) {
+      if (h.kind === 'note') openNoteViewer(h.day);
+      else if (h.kind === 'cluster') {
+        const lo = Math.min(...h.days), hi = Math.max(...h.days);
+        tooltip.hidden = true;
+        centerOn((lo + hi) / 2, clamp(W / Math.max(hi - lo + 8, 10), view.ppd * 1.6, 60));
+      }
+      else if (h.kind === 'span') openSpanDialog(h.span);
+      return;
+    }
+    if (y >= L.spanY) openDayEditor(Math.floor(dayAt(x)));
+    return;
+  }
+  if (d.mode === 'span-new' && d.curDay !== undefined) {
+    const a = Math.min(d.startDay, d.curDay), b = Math.max(d.startDay, d.curDay);
+    const sp = { id: uid(), start: isoFromDay(a), end: isoFromDay(b), label: '', color: `slot:${(data.spans.length % SLOT_COUNT) + 1}` };
+    data.spans.push(sp);
+    reindex(); touch(); invalidate();
+    openSpanDialog(sp, true);
+  } else if (d.mode && d.mode.startsWith('span')) {
+    reindex(); touch(); invalidate();
+  } else if (d.mode === 'pan') {
+    touch();
+  }
+}
+
+canvas.addEventListener('pointerup', e => {
+  pointers.delete(e.pointerId);
+  if (pinch) { if (pointers.size < 2) pinch = null; return; }
+  endDrag(e.offsetX, e.offsetY);
+});
+canvas.addEventListener('pointercancel', e => {
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinch = null;
+  drag = null;
+});
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const scale = e.deltaMode === 1 ? 16 : 1;
+  const dx = e.deltaX * scale, dy = e.deltaY * scale;
+  if (e.ctrlKey) zoomAt(e.offsetX, Math.exp(-dy * 0.01));
+  else if (Math.abs(dx) > Math.abs(dy)) panBy(-dx);
+  else if (e.shiftKey) panBy(-dy);
+  else zoomAt(e.offsetX, Math.exp(-dy * 0.0018));
+  if (hover) { hover.day = Math.floor(dayAt(hover.x)); updateTooltip(hover.x, hover.y, hover.day); }
+}, { passive: false });
+
+canvas.addEventListener('dblclick', e => e.preventDefault());
+
+/* ------------------------------ keyboard ------------------------------ */
+document.addEventListener('keydown', e => {
+  if (document.querySelector('dialog[open]')) return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+    if (e.key === 'Enter' && e.target.id === 'docTitle') e.target.blur();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveToFile(false); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); openFile(); return; }
+  switch (e.key) {
+    case 'ArrowLeft': panBy(e.shiftKey ? W * 0.5 : W * 0.15); break;
+    case 'ArrowRight': panBy(e.shiftKey ? -W * 0.5 : -W * 0.15); break;
+    case '+': case '=': zoomAt(W / 2, 1.3); break;
+    case '-': case '_': zoomAt(W / 2, 1 / 1.3); break;
+    case 't': case 'T': case 'Home': centerOn(todayDay()); break;
+    case 'f': case 'F': fitView(); touch(); break;
+    case 'n': case 'N': openDayEditor(todayDay()); break;
+  }
+});
+
+/* ------------------------------ day editor ------------------------------ */
+const dlgDay = $('#dlgDay');
+let dayTarget = null;
+
+function openDayEditor(day) {
+  dayTarget = day;
+  $('#dayDate').value = isoFromDay(day);
+  buildDayForm(day);
+  dlgDay.showModal();
+}
+function buildDayForm(day) {
+  const e = entryByDay.get(day);
+  const box = $('#dayMetrics');
+  box.textContent = '';
+  if (data.metrics.length === 0) {
+    const msg = el('p', 'hint', 'No metrics defined yet — add some under “Metrics” to log values here. You can still write a note.');
+    box.append(msg);
+  }
+  for (const m of data.metrics) {
+    const row = el('div', 'dm-row');
+    row.dataset.mid = m.id;
+    const name = el('div', 'dm-name');
+    const key = el('i');
+    key.style.background = resolveColor(m.color);
+    name.append(key, el('span', '', m.name));
+    row.append(name);
+    const cur = e && e.v ? e.v[m.id] : undefined;
+    if (m.type === 'scale') {
+      const range = document.createElement('input');
+      range.type = 'range'; range.min = m.min; range.max = m.max; range.step = m.step || 1;
+      const num = document.createElement('input');
+      num.type = 'number'; num.min = m.min; num.max = m.max; num.step = m.step || 1;
+      if (typeof cur === 'number') { range.value = cur; num.value = cur; }
+      else { range.value = (m.min + m.max) / 2; num.value = ''; row.classList.add('dm-unset'); }
+      range.addEventListener('input', () => { num.value = range.value; row.classList.remove('dm-unset'); });
+      num.addEventListener('input', () => {
+        if (num.value === '') row.classList.add('dm-unset');
+        else { range.value = num.value; row.classList.remove('dm-unset'); }
+      });
+      const clr = el('button', 'dm-clear', '✕');
+      clr.type = 'button'; clr.title = 'No data for this day';
+      clr.addEventListener('click', () => { num.value = ''; row.classList.add('dm-unset'); });
+      row.append(range, num, clr);
+    } else {
+      const sel = document.createElement('select');
+      const optNone = el('option', '', '—');
+      optNone.value = '';
+      sel.append(optNone);
+      for (const lv of m.levels) {
+        const o = el('option', '', lv);
+        o.value = lv;
+        sel.append(o);
+      }
+      sel.value = typeof cur === 'string' && m.levels.includes(cur) ? cur : '';
+      sel.style.gridColumn = '2 / span 2';
+      row.append(sel, el('span'));
+    }
+    box.append(row);
+  }
+  $('#dayNoteTitle').value = e && e.note ? e.note.title || '' : '';
+  $('#dayNoteBody').value = e && e.note ? e.note.body || '' : '';
+}
+$('#dayDate').addEventListener('change', () => {
+  const v = $('#dayDate').value;
+  if (v) { dayTarget = dayFromISO(v); buildDayForm(dayTarget); }
+});
+$('#daySave').addEventListener('click', () => {
+  const iso = isoFromDay(dayTarget);
+  const v = {};
+  for (const row of $('#dayMetrics').querySelectorAll('.dm-row')) {
+    const m = data.metrics.find(mm => mm.id === row.dataset.mid);
+    if (!m) continue;
+    if (m.type === 'scale') {
+      const num = row.querySelector('input[type="number"]');
+      if (num.value !== '' && Number.isFinite(+num.value)) v[m.id] = +num.value;
+    } else {
+      const sel = row.querySelector('select');
+      if (sel.value) v[m.id] = sel.value;
+    }
+  }
+  const title = $('#dayNoteTitle').value.trim();
+  const body = $('#dayNoteBody').value.replace(/\s+$/, '');
+  const entry = {};
+  if (Object.keys(v).length) entry.v = v;
+  if (title || body) {
+    entry.note = {};
+    if (title) entry.note.title = title;
+    if (body) entry.note.body = body;
+  }
+  if (Object.keys(entry).length) data.entries[iso] = entry;
+  else delete data.entries[iso];
+  reindex(); touch(); updateEmptyState(); invalidate();
+  dlgDay.close();
+});
+$('#dayDelete').addEventListener('click', () => {
+  delete data.entries[isoFromDay(dayTarget)];
+  reindex(); touch(); updateEmptyState(); invalidate();
+  dlgDay.close();
+});
+$('#dayCancel').addEventListener('click', () => dlgDay.close());
+
+/* ------------------------------ note viewer ------------------------------ */
+const dlgNote = $('#dlgNote');
+let noteDay = null;
+function openNoteViewer(day) {
+  const e = entryByDay.get(day);
+  if (!e || !e.note) return openDayEditor(day);
+  noteDay = day;
+  $('#noteTitle').textContent = (e.note.title || '').trim() || 'Journal entry';
+  $('#noteDate').textContent = fmtHuman(day);
+  const box = $('#noteBody');
+  box.textContent = '';
+  const body = (e.note.body || '').trim();
+  if (body) {
+    for (const para of body.split(/\n{2,}/)) {
+      const pEl = el('p');
+      const lines = para.split('\n');
+      lines.forEach((ln, i) => {
+        pEl.append(document.createTextNode(ln));
+        if (i < lines.length - 1) pEl.append(document.createElement('br'));
+      });
+      box.append(pEl);
+    }
+  } else {
+    box.append(el('p', 'hint', '(no journal text — headline only)'));
+  }
+  dlgNote.showModal();
+}
+$('#noteEdit').addEventListener('click', () => { dlgNote.close(); openDayEditor(noteDay); });
+$('#noteClose').addEventListener('click', () => dlgNote.close());
+
+/* ------------------------------ span dialog ------------------------------ */
+const dlgSpan = $('#dlgSpan');
+let spanTarget = null, spanIsNew = false, spanColor = 'slot:1';
+
+function buildSwatches(container, current, onPick) {
+  container.textContent = '';
+  for (let i = 1; i <= SLOT_COUNT; i++) {
+    const b = el('button', 'swatch');
+    b.type = 'button';
+    b.style.background = themeColors.series[i - 1];
+    if (current === `slot:${i}`) b.classList.add('sel');
+    b.addEventListener('click', () => { onPick(`slot:${i}`); });
+    container.append(b);
+  }
+  const custom = document.createElement('input');
+  custom.type = 'color';
+  custom.title = 'Custom color';
+  custom.value = current && current.startsWith('#') ? current : '#888888';
+  custom.addEventListener('input', () => onPick(custom.value));
+  container.append(custom);
+}
+function openSpanDialog(sp, isNew = false) {
+  spanTarget = sp; spanIsNew = isNew;
+  spanColor = sp.color;
+  $('#spanTitle').textContent = isNew ? 'New event span' : 'Event span';
+  $('#spanLabel').value = sp.label || '';
+  $('#spanStart').value = sp.start;
+  $('#spanEnd').value = sp.end;
+  const paint = () => buildSwatches($('#spanSwatches'), spanColor, c => { spanColor = c; paint(); });
+  paint();
+  const del = $('#spanDelete');
+  del.textContent = 'Delete'; del.classList.remove('armed');
+  dlgSpan.showModal();
+  $('#spanLabel').focus();
+}
+$('#spanSave').addEventListener('click', () => {
+  const sp = spanTarget;
+  sp.label = $('#spanLabel').value.trim();
+  let s = $('#spanStart').value || sp.start;
+  let en = $('#spanEnd').value || sp.end;
+  if (dayFromISO(s) > dayFromISO(en)) [s, en] = [en, s];
+  sp.start = s; sp.end = en;
+  sp.color = spanColor;
+  reindex(); touch(); updateEmptyState(); invalidate();
+  dlgSpan.close();
+});
+$('#spanDelete').addEventListener('click', e => {
+  const b = e.target;
+  if (!b.classList.contains('armed')) { b.classList.add('armed'); b.textContent = 'Really delete?'; return; }
+  data.spans = data.spans.filter(s => s.id !== spanTarget.id);
+  reindex(); touch(); updateEmptyState(); invalidate();
+  dlgSpan.close();
+});
+$('#spanCancel').addEventListener('click', () => {
+  if (spanIsNew) {
+    data.spans = data.spans.filter(s => s.id !== spanTarget.id);
+    reindex(); touch(); invalidate();
+  }
+  dlgSpan.close();
+});
+
+/* ------------------------------ metric manager ------------------------------ */
+const dlgMetrics = $('#dlgMetrics');
+function openMetrics() {
+  renderMetricList();
+  dlgMetrics.showModal();
+}
+function renderMetricList() {
+  const list = $('#metricList');
+  list.textContent = '';
+  data.metrics.forEach((m, idx) => {
+    const row = el('div', 'mrow');
+    const line1 = el('div', 'line1');
+
+    const colorBtn = el('button', 'mcolor');
+    colorBtn.type = 'button';
+    colorBtn.title = 'Change color';
+    colorBtn.style.background = resolveColor(m.color);
+
+    const name = document.createElement('input');
+    name.className = 'mname';
+    name.value = m.name || '';
+    name.placeholder = 'Metric name';
+    name.addEventListener('input', () => { m.name = name.value; touch(); invalidate(); });
+
+    const type = document.createElement('select');
+    type.className = 'mtype';
+    for (const [val, lbl] of [['scale', 'Number scale'], ['levels', 'Ordered labels']]) {
+      const o = el('option', '', lbl);
+      o.value = val;
+      type.append(o);
+    }
+    type.value = m.type;
+
+    const up = el('button', 'mini', '↑'); up.type = 'button'; up.title = 'Move up';
+    const dn = el('button', 'mini', '↓'); dn.type = 'button'; dn.title = 'Move down';
+    const del = el('button', 'mini danger', '✕'); del.type = 'button'; del.title = 'Delete metric';
+    up.disabled = idx === 0; dn.disabled = idx === data.metrics.length - 1;
+    up.addEventListener('click', () => { data.metrics.splice(idx - 1, 0, data.metrics.splice(idx, 1)[0]); touch(); invalidate(); renderMetricList(); });
+    dn.addEventListener('click', () => { data.metrics.splice(idx + 1, 0, data.metrics.splice(idx, 1)[0]); touch(); invalidate(); renderMetricList(); });
+    del.addEventListener('click', () => {
+      if (!del.classList.contains('armed')) { del.classList.add('armed'); del.textContent = 'sure?'; return; }
+      data.metrics.splice(idx, 1);
+      for (const iso of Object.keys(data.entries)) {
+        const e = data.entries[iso];
+        if (e.v) { delete e.v[m.id]; if (!Object.keys(e.v).length) delete e.v; }
+        if (!e.v && !e.note) delete data.entries[iso];
+      }
+      reindex(); touch(); updateEmptyState(); invalidate(); renderMetricList();
+    });
+
+    line1.append(colorBtn, name, type, up, dn, del);
+    row.append(line1);
+
+    const cfg = el('div', 'cfg');
+    row.append(cfg);
+    const buildCfg = () => {
+      cfg.textContent = '';
+      if (m.type === 'scale') {
+        const mkNum = (label, key, step) => {
+          cfg.append(el('span', 'cfg-lbl', label));
+          const inp = document.createElement('input');
+          inp.type = 'number'; inp.step = step || 'any'; inp.value = m[key];
+          inp.addEventListener('input', () => {
+            const n = parseFloat(inp.value);
+            if (Number.isFinite(n)) { m[key] = n; touch(); invalidate(); }
+          });
+          cfg.append(inp);
+        };
+        mkNum('min', 'min'); mkNum('max', 'max'); mkNum('step', 'step');
+      } else {
+        cfg.append(el('span', 'cfg-lbl', 'labels (worst → best)'));
+        const inp = document.createElement('input');
+        inp.className = 'mlevels';
+        inp.value = (m.levels || []).join(', ');
+        inp.placeholder = 'None, Bad, Okay, Good, Great';
+        inp.addEventListener('change', () => {
+          const lv = inp.value.split(',').map(s => s.trim()).filter(Boolean);
+          if (lv.length >= 2) { m.levels = lv; touch(); invalidate(); }
+        });
+        cfg.append(inp);
+      }
+    };
+    buildCfg();
+    type.addEventListener('change', () => {
+      m.type = type.value;
+      if (m.type === 'scale' && !Number.isFinite(m.min)) { m.min = 0; m.max = 5; m.step = 1; }
+      if (m.type === 'levels' && !(m.levels || []).length) m.levels = ['None', 'Bad', 'Okay', 'Good', 'Great'];
+      touch(); invalidate(); buildCfg();
+    });
+
+    const sw = el('div', 'swatches');
+    row.append(sw);
+    const pickColor = c => {
+      m.color = c;
+      colorBtn.style.background = resolveColor(c);
+      touch(); invalidate();
+      buildSwatches(sw, c, pickColor);
+      sw.classList.add('open');
+    };
+    colorBtn.addEventListener('click', () => {
+      sw.classList.toggle('open');
+      buildSwatches(sw, m.color, pickColor);
+    });
+
+    list.append(row);
+  });
+}
+$('#metricAdd').addEventListener('click', () => {
+  data.metrics.push({
+    id: uid(), name: 'New metric', type: 'scale', min: 0, max: 5, step: 1,
+    color: `slot:${(data.metrics.length % SLOT_COUNT) + 1}`,
+  });
+  touch(); updateEmptyState(); invalidate(); renderMetricList();
+  const inputs = $('#metricList').querySelectorAll('input.mname');
+  const last = inputs[inputs.length - 1];
+  if (last) { last.focus(); last.select(); }
+});
+$('#metricsClose').addEventListener('click', () => dlgMetrics.close());
+
+/* ------------------------------ table view ------------------------------ */
+function openTable() {
+  const tbl = $('#dataTable');
+  tbl.textContent = '';
+  const thead = document.createElement('thead');
+  const hr = document.createElement('tr');
+  hr.append(el('th', '', 'Date'));
+  for (const m of data.metrics) hr.append(el('th', '', m.name));
+  hr.append(el('th', '', 'Note'));
+  thead.append(hr);
+  tbl.append(thead);
+  const tbody = document.createElement('tbody');
+  for (const d of [...entryDays].reverse()) {
+    const e = entryByDay.get(d);
+    const tr = document.createElement('tr');
+    tr.append(el('td', '', isoFromDay(d)));
+    for (const m of data.metrics) tr.append(el('td', 'num', fmtVal(m, e.v ? e.v[m.id] : undefined)));
+    const noteTxt = e.note ? ((e.note.title || '').trim() || (e.note.body || '').trim().split('\n')[0]) : '';
+    tr.append(el('td', 'notecell', noteTxt));
+    tr.addEventListener('click', () => { $('#dlgTable').close(); openDayEditor(d); });
+    tbody.append(tr);
+  }
+  tbl.append(tbody);
+  $('#dlgTable').showModal();
+}
+$('#tableClose').addEventListener('click', () => $('#dlgTable').close());
+
+/* ------------------------------ file open/save ------------------------------ */
+async function saveToFile(saveAs) {
+  const json = serialize();
+  const suggested = (data.title.replace(/[^\w\- ]+/g, '').trim() || 'timeline') + '.timeliner.json';
+  if (window.showSaveFilePicker) {
+    try {
+      if (saveAs || !fileHandle) {
+        fileHandle = await showSaveFilePicker({
+          suggestedName: suggested,
+          types: [{ description: 'Timeliner JSON', accept: { 'application/json': ['.json'] } }],
+        });
+      }
+      const w = await fileHandle.createWritable();
+      await w.write(json);
+      await w.close();
+      fileName = fileHandle.name;
+      setStatus('Saved to file');
+      return;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+      console.warn('File picker failed, falling back to download', err);
+    }
+  }
+  downloadBlob(json, suggested, 'application/json');
+  fileName = suggested;
+  setStatus('Downloaded');
+}
+function downloadBlob(content, name, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+async function openFile() {
+  if (window.showOpenFilePicker) {
+    try {
+      const [h] = await showOpenFilePicker({
+        types: [{ description: 'Timeliner JSON', accept: { 'application/json': ['.json'] } }],
+      });
+      const f = await h.getFile();
+      loadJSONText(await f.text(), h.name);
+      fileHandle = h;
+      return;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+      console.warn('Open picker failed, falling back to input', err);
+    }
+  }
+  $('#filePick').click();
+}
+$('#filePick').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  if (f) loadJSONText(await f.text(), f.name);
+  e.target.value = '';
+});
+function loadJSONText(text, name) {
+  try {
+    const doc = JSON.parse(text);
+    adopt(doc, { fit: !doc.view });
+    fileName = name || null;
+    setStatus('Loaded');
+  } catch (err) {
+    alert('Could not load file: ' + err.message);
+  }
+}
+
+/* ------------------------------ export interactive HTML ------------------------------ */
+function buildExportHtml() {
+  const clone = document.documentElement.cloneNode(true);
+  for (const d of clone.querySelectorAll('dialog')) d.removeAttribute('open');
+  const tt = clone.querySelector('#tooltip');
+  if (tt) { tt.hidden = true; tt.textContent = ''; }
+  const exp = JSON.parse(JSON.stringify(data));
+  exp.docId = uid();                       // fresh id so the export doesn't collide with this doc's autosave
+  exp.exportedAt = new Date().toISOString();
+  const slot = clone.querySelector('#timeliner-data');
+  slot.textContent = JSON.stringify(exp).replace(/</g, '\\u003c');
+  const titleEl = clone.querySelector('title');
+  if (titleEl) titleEl.textContent = `${data.title} — Timeliner`;
+  return '<!DOCTYPE html>\n' + clone.outerHTML;
+}
+async function exportHtml() {
+  const html = buildExportHtml();
+  const name = (data.title.replace(/[^\w\- ]+/g, '').trim() || 'timeline') + '.html';
+  if (window.showSaveFilePicker) {
+    try {
+      const h = await showSaveFilePicker({
+        suggestedName: name,
+        types: [{ description: 'HTML file', accept: { 'text/html': ['.html'] } }],
+      });
+      const w = await h.createWritable();
+      await w.write(html);
+      await w.close();
+      setStatus('Exported ' + h.name);
+      return;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+    }
+  }
+  downloadBlob(html, name, 'text/html');
+  setStatus('Exported');
+}
+
+/* ------------------------------ Google Drive backup ------------------------------ */
+const GD_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+let gdToken = null;
+
+function gdStatus(msg) { $('#gdStatus').textContent = msg; }
+function gdLoadScript() {
+  return new Promise((res, rej) => {
+    if (window.google && google.accounts) return res();
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.onload = res;
+    s.onerror = () => rej(new Error('Could not load Google sign-in script (offline?)'));
+    document.head.append(s);
+  });
+}
+async function gdAuth() {
+  const clientId = $('#gdClient').value.trim();
+  if (!clientId) throw new Error('Enter your OAuth Client ID first (see README).');
+  localStorage.setItem('timeliner:gdclient', clientId);
+  if (location.protocol === 'file:') throw new Error('Google sign-in needs the app served over http(s) — e.g. run “npx serve” in this folder and open the localhost URL.');
+  await gdLoadScript();
+  if (gdToken && gdToken.expires > Date.now()) return gdToken.token;
+  return new Promise((res, rej) => {
+    const tc = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: GD_SCOPE,
+      callback: t => {
+        if (t.error) return rej(new Error(t.error_description || t.error));
+        gdToken = { token: t.access_token, expires: Date.now() + (t.expires_in - 60) * 1000 };
+        res(gdToken.token);
+      },
+    });
+    tc.requestAccessToken();
+  });
+}
+async function gdApi(token, url, opts = {}) {
+  const r = await fetch(url, { ...opts, headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) } });
+  if (!r.ok) throw new Error(`Drive API ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  return r;
+}
+async function gdFolder(token) {
+  const q = encodeURIComponent("name='Timeliner' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  const r = await (await gdApi(token, `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`)).json();
+  if (r.files.length) return r.files[0].id;
+  const c = await (await gdApi(token, 'https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Timeliner', mimeType: 'application/vnd.google-apps.folder' }),
+  })).json();
+  return c.id;
+}
+async function gdBackup() {
+  try {
+    gdStatus('Signing in…');
+    const token = await gdAuth();
+    gdStatus('Uploading…');
+    const folder = await gdFolder(token);
+    const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
+    const name = `${(data.title || 'timeline').replace(/[^\w\- ]+/g, '')}-${stamp}.timeliner.json`;
+    const meta = { name, parents: [folder], mimeType: 'application/json' };
+    const boundary = 'tl' + uid();
+    const body =
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n` +
+      `--${boundary}\r\nContent-Type: application/json\r\n\r\n${serialize()}\r\n--${boundary}--`;
+    await gdApi(token, 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST',
+      headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+      body,
+    });
+    gdStatus(`✓ Backed up as ${name}`);
+  } catch (err) {
+    gdStatus('✗ ' + err.message);
+  }
+}
+async function gdRestore() {
+  try {
+    gdStatus('Signing in…');
+    const token = await gdAuth();
+    gdStatus('Looking for backups…');
+    const folder = await gdFolder(token);
+    const q = encodeURIComponent(`'${folder}' in parents and trashed=false and name contains '.timeliner.json'`);
+    const r = await (await gdApi(token, `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=createdTime desc&pageSize=1&fields=files(id,name)`)).json();
+    if (!r.files.length) { gdStatus('No backups found in Drive/Timeliner.'); return; }
+    const f = r.files[0];
+    const text = await (await gdApi(token, `https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`)).text();
+    loadJSONText(text, f.name);
+    gdStatus(`✓ Restored ${f.name}`);
+  } catch (err) {
+    gdStatus('✗ ' + err.message);
+  }
+}
+
+/* ------------------------------ sample data ------------------------------ */
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function sampleDoc() {
+  const rnd = mulberry32(42);
+  const t = todayDay();
+  const start = t - 150;
+  const d = newDoc();
+  d.docId = 'default';
+  d.title = 'Wellbeing (example)';
+  d.metrics = [
+    { id: 'anx', name: 'Anxiety', type: 'scale', min: 0, max: 5, step: 1, color: 'slot:1' },
+    { id: 'dep', name: 'Depression', type: 'scale', min: 1, max: 5, step: 1, color: 'slot:2' },
+    { id: 'mean', name: 'Meanness', type: 'scale', min: 1, max: 6, step: 1, color: 'slot:3' },
+    { id: 'sleep', name: 'Sleep', type: 'levels', levels: ['None', 'Bad', 'Okay', 'Good', 'Great'], color: 'slot:4' },
+  ];
+  d.spans = [
+    { id: uid(), start: isoFromDay(t - 96), end: isoFromDay(t - 88), label: 'Vacation', color: 'slot:3' },
+    { id: uid(), start: isoFromDay(t - 62), end: isoFromDay(t - 20), label: 'Medication trial', color: 'slot:7' },
+    { id: uid(), start: isoFromDay(t - 34), end: isoFromDay(t - 30), label: 'Flu', color: 'slot:8' },
+  ];
+  const sleepLv = d.metrics[3].levels;
+  let anx = 2.5, dep = 2.5, mean = 2;
+  const notes = [
+    [t - 118, 'Rough day at work', ''],
+    [t - 96, 'Off to the coast!', 'First real break in a year. The drive up was gorgeous — stopped at that little diner from last time.\n\nGoal for the week: no email.'],
+    [t - 88, 'Back home', 'Vacation helped more than I expected. Sleeping through the night again.'],
+    [t - 62, 'Started the new medication', 'Doctor suggested we try it for six weeks and watch the anxiety numbers. Possible side effects the first few days: headaches, weird dreams.'],
+    [t - 55, 'Headachy but steadier', ''],
+    [t - 34, 'Everyone at home has the flu', ''],
+    [t - 20, 'Med check-in with doctor', 'Numbers look better on the whole. We agreed to stop the trial and see whether the improvement holds.\n\nThings to keep doing: morning walks, no coffee after 2pm.'],
+    [t - 9, 'Good week', 'Nothing dramatic — which is the point. A string of okay days in a row for the first time in months.'],
+    [t - 2, 'Slipped a bit', ''],
+  ];
+  for (let day = start; day <= t; day++) {
+    if (rnd() < 0.08) continue;    // journal gaps
+    const inVac = day >= t - 96 && day <= t - 88;
+    const inFlu = day >= t - 34 && day <= t - 30;
+    const inMed = day >= t - 58 && day <= t - 20;
+    anx += (rnd() - 0.5) * 1.2 + (inVac ? -0.25 : 0) + (inMed ? -0.06 : 0.02) + (inFlu ? 0.2 : 0);
+    dep += (rnd() - 0.5) * 0.9 + (inVac ? -0.2 : 0) + (inMed ? -0.05 : 0.02);
+    mean += (rnd() - 0.5) * 1.0 + (inFlu ? 0.3 : 0);
+    anx = clamp(anx, 0, 5); dep = clamp(dep, 1, 5); mean = clamp(mean, 1, 6);
+    let sleepIdx = clamp(Math.round(4 - anx * 0.55 + (rnd() - 0.5) * 2 + (inVac ? 0.7 : 0) - (inFlu ? 1.2 : 0)), 0, 4);
+    const entry = { v: {
+      anx: Math.round(anx), dep: Math.round(dep), mean: Math.round(mean), sleep: sleepLv[sleepIdx],
+    } };
+    d.entries[isoFromDay(day)] = entry;
+  }
+  for (const [day, title, body] of notes) {
+    const iso = isoFromDay(day);
+    const e = d.entries[iso] || (d.entries[iso] = {});
+    e.note = {};
+    if (title) e.note.title = title;
+    if (body) e.note.body = body;
+  }
+  return d;
+}
+
+/* ------------------------------ toolbar & settings wiring ------------------------------ */
+$('#btnToday').addEventListener('click', () => centerOn(todayDay()));
+$('#btnFit').addEventListener('click', () => { fitView(); touch(); });
+$('#btnZoomIn').addEventListener('click', () => zoomAt(W / 2, 1.35));
+$('#btnZoomOut').addEventListener('click', () => zoomAt(W / 2, 1 / 1.35));
+$('#btnAddNote').addEventListener('click', () => openDayEditor(todayDay()));
+$('#btnAddSpan').addEventListener('click', () => {
+  const mid = Math.floor(dayAt(W / 2));
+  const sp = { id: uid(), start: isoFromDay(mid - 3), end: isoFromDay(mid + 3), label: '', color: `slot:${(data.spans.length % SLOT_COUNT) + 1}` };
+  data.spans.push(sp);
+  reindex(); touch(); invalidate();
+  openSpanDialog(sp, true);
+});
+$('#btnMetrics').addEventListener('click', openMetrics);
+$('#btnTable').addEventListener('click', openTable);
+$('#btnOpen').addEventListener('click', openFile);
+$('#btnSave').addEventListener('click', e => saveToFile(e.shiftKey));
+$('#btnExport').addEventListener('click', exportHtml);
+
+$('#docTitle').addEventListener('input', () => {
+  data.title = $('#docTitle').value;
+  document.title = `${data.title} — Timeliner`;
+  touch();
+});
+
+/* theme */
+const THEME_KEY = 'timeliner:theme';
+function applyTheme(mode) {
+  if (mode === 'light' || mode === 'dark') document.documentElement.dataset.theme = mode;
+  else delete document.documentElement.dataset.theme;
+  $('#btnTheme').textContent = mode === 'light' ? '☀' : mode === 'dark' ? '☾' : '◐';
+  $('#btnTheme').title = `Theme: ${mode}`;
+  invalidate();
+}
+$('#btnTheme').addEventListener('click', () => {
+  const cur = localStorage.getItem(THEME_KEY) || 'auto';
+  const next = cur === 'auto' ? 'light' : cur === 'light' ? 'dark' : 'auto';
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
+});
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => invalidate());
+
+/* settings dialog */
+$('#btnSettings').addEventListener('click', () => {
+  $('#setTitle').value = data.title;
+  $('#gdClient').value = localStorage.getItem('timeliner:gdclient') || '';
+  $('#gdOrigin').textContent = location.origin === 'null' ? 'file:// (no sign-in)' : location.origin;
+  gdStatus('');
+  for (const b of [$('#setSample'), $('#setNew')]) { b.classList.remove('armed'); b.dataset.armed = ''; }
+  $('#dlgSettings').showModal();
+});
+$('#settingsClose').addEventListener('click', () => $('#dlgSettings').close());
+$('#setTitle').addEventListener('input', () => {
+  data.title = $('#setTitle').value;
+  $('#docTitle').value = data.title;
+  document.title = `${data.title} — Timeliner`;
+  touch();
+});
+function armTwice(btn, label, fn) {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.armed !== '1') {
+      btn.dataset.armed = '1';
+      btn.dataset.prev = btn.textContent;
+      btn.textContent = 'Click again to confirm';
+      setTimeout(() => { if (btn.dataset.armed === '1') { btn.dataset.armed = ''; btn.textContent = btn.dataset.prev; } }, 2500);
+      return;
+    }
+    btn.dataset.armed = '';
+    btn.textContent = btn.dataset.prev;
+    fn();
+  });
+}
+armTwice($('#setSample'), 'Load example data', () => { fileHandle = null; fileName = null; adopt(sampleDoc(), { fit: true }); $('#dlgSettings').close(); });
+armTwice($('#setNew'), 'New empty timeline', () => { fileHandle = null; fileName = null; adopt(newDoc(), { fit: true }); $('#dlgSettings').close(); });
+$('#gdBackup').addEventListener('click', gdBackup);
+$('#gdRestore').addEventListener('click', gdRestore);
+
+/* empty state */
+$('#esMetrics').addEventListener('click', () => { openMetrics(); });
+$('#esSample').addEventListener('click', () => adopt(sampleDoc(), { fit: true }));
+$('#esOpen').addEventListener('click', openFile);
+
+/* ------------------------------ boot ------------------------------ */
+function boot() {
+  applyTheme(localStorage.getItem(THEME_KEY) || 'auto');
+  let embedded = null;
+  try { embedded = JSON.parse($('#timeliner-data').textContent); } catch (e) { /* ignore */ }
+  let doc = null;
+  if (embedded && typeof embedded === 'object') {
+    const saved = localStorage.getItem(lsKey(embedded.docId));
+    doc = saved ? JSON.parse(saved) : embedded;
+  } else {
+    const last = localStorage.getItem('timeliner:last');
+    const saved = last && localStorage.getItem(lsKey(last));
+    doc = saved ? JSON.parse(saved) : null;
+  }
+  try {
+    adopt(doc || newDoc(), { fit: false });
+  } catch (err) {
+    console.error('Failed to load stored document, starting fresh', err);
+    adopt(newDoc(), { fit: true });
+  }
+  new ResizeObserver(() => invalidate()).observe(wrap);
+  window.addEventListener('beforeunload', flushSave);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) flushSave(); });
+}
+boot();
+</script>
+</body>
+</html>
