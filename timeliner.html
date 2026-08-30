@@ -132,6 +132,9 @@ input, select, textarea { font: inherit; color: var(--ink); }
   background: var(--surface); border-top: 1px solid var(--border);
 }
 .statusbar .sb-right { margin-left: auto; white-space: nowrap; }
+.statusbar .sb-dirty { color: var(--accent); font-weight: 600; white-space: nowrap; }
+.btn.dirty { border-color: var(--accent); color: var(--accent); }
+.btn.dirty::after { content: " •"; }
 
 /* ============================== DIALOGS ============================== */
 dialog {
@@ -254,6 +257,7 @@ legend { color: var(--ink2); font-size: 12px; padding: 0 4px; }
 
 <footer class="statusbar">
   <span>Drag to pan · Scroll to zoom · Click a day to log it · Drag on the span strip to add an event</span>
+  <span class="sb-dirty" id="dirtyFlag" hidden title="Changes since the last Save to file (autosave to this browser is still on)">● Unsaved changes — Ctrl+S to save</span>
   <span class="sb-right" id="statusRight">—</span>
 </footer>
 
@@ -506,11 +510,33 @@ function hasAnyData() {
 
 /* ------------------------------ persistence ------------------------------ */
 const lsKey = id => `timeliner:doc:${id}`;
+const dirtyKey = id => `timeliner:dirty:${id}`;
 let saveTimer = null;
+let dirty = false;                  // data changed since the last Save to file (view changes don't count)
+
+// touch(): data changed — autosave to this browser and flag unsaved changes.
 function touch() {
   data.modified = new Date().toISOString();
+  setDirty(true);
+  touchView();
+}
+// touchView(): only the viewport moved — autosave, but don't nag about saving.
+function touchView() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(flushSave, 400);
+}
+function setDirty(v) {
+  dirty = !!v;
+  $('#btnSave').classList.toggle('dirty', dirty);
+  $('#dirtyFlag').hidden = !dirty;
+  updateTitle();
+  try {
+    if (dirty) localStorage.setItem(dirtyKey(data.docId), '1');
+    else localStorage.removeItem(dirtyKey(data.docId));
+  } catch (e) { /* storage unavailable — indicator still works for this session */ }
+}
+function updateTitle() {
+  document.title = `${dirty ? '• ' : ''}${data.title} — Timeliner`;
 }
 function flushSave() {
   clearTimeout(saveTimer);
@@ -551,17 +577,17 @@ function validateDoc(d) {
   return d;
 }
 
-function adopt(doc, { fit = false } = {}) {
+function adopt(doc, { fit = false, dirty: wasDirty = false } = {}) {
   data = validateDoc(doc);
   reindex();
   $('#docTitle').value = data.title;
-  document.title = `${data.title} — Timeliner`;
   if (data.view && Number.isFinite(data.view.start) && Number.isFinite(data.view.ppd) && !fit) {
     view.start = data.view.start;
     view.ppd = clamp(data.view.ppd, MIN_PPD, MAX_PPD);
   } else {
     fitView();
   }
+  setDirty(wasDirty);
   flushSave();
   updateEmptyState();
   invalidate();
@@ -582,14 +608,14 @@ function zoomAt(x, factor) {
   const day = dayAt(x);
   view.ppd = clamp(view.ppd * factor, MIN_PPD, MAX_PPD);
   view.start = day - x / view.ppd;
-  touch();
+  touchView();
   invalidate();
 }
-function panBy(px) { view.start -= px / view.ppd; touch(); invalidate(); }
+function panBy(px) { view.start -= px / view.ppd; touchView(); invalidate(); }
 function centerOn(day, ppd) {
   if (ppd) view.ppd = clamp(ppd, MIN_PPD, MAX_PPD);
   view.start = day - (W / 2) / view.ppd;
-  touch();
+  touchView();
   invalidate();
 }
 function fitView() {
@@ -1217,7 +1243,7 @@ function endDrag(x, y) {
   } else if (d.mode && d.mode.startsWith('span')) {
     reindex(); touch(); invalidate();
   } else if (d.mode === 'pan') {
-    touch();
+    touchView();
   }
 }
 
@@ -1247,21 +1273,22 @@ canvas.addEventListener('dblclick', e => e.preventDefault());
 
 /* ------------------------------ keyboard ------------------------------ */
 document.addEventListener('keydown', e => {
+  // Save / Open work everywhere — inside dialogs and text fields too. Ctrl+Shift+S = Save As.
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') { e.preventDefault(); saveToFile(e.shiftKey); return; }
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'o') { e.preventDefault(); openFile(); return; }
   if (document.querySelector('dialog[open]')) return;
   const tag = (e.target.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || tag === 'select') {
     if (e.key === 'Enter' && e.target.id === 'docTitle') e.target.blur();
     return;
   }
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveToFile(false); return; }
-  if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); openFile(); return; }
   switch (e.key) {
     case 'ArrowLeft': panBy(e.shiftKey ? W * 0.5 : W * 0.15); break;
     case 'ArrowRight': panBy(e.shiftKey ? -W * 0.5 : -W * 0.15); break;
     case '+': case '=': zoomAt(W / 2, 1.3); break;
     case '-': case '_': zoomAt(W / 2, 1 / 1.3); break;
     case 't': case 'T': case 'Home': centerOn(todayDay()); break;
-    case 'f': case 'F': fitView(); touch(); break;
+    case 'f': case 'F': fitView(); touchView(); break;
     case 'n': case 'N': openDayEditor(todayDay()); break;
   }
 });
@@ -1644,6 +1671,7 @@ async function saveToFile(saveAs) {
       await w.write(json);
       await w.close();
       fileName = fileHandle.name;
+      setDirty(false);
       setStatus('Saved to file');
       return;
     } catch (err) {
@@ -1653,6 +1681,7 @@ async function saveToFile(saveAs) {
   }
   downloadBlob(json, suggested, 'application/json');
   fileName = suggested;
+  setDirty(false);
   setStatus('Downloaded');
 }
 function downloadBlob(content, name, type) {
@@ -1666,6 +1695,7 @@ function downloadBlob(content, name, type) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 async function openFile() {
+  if (dirty && !confirm('You have unsaved changes. Open another file anyway?')) return;
   if (window.showOpenFilePicker) {
     try {
       const [h] = await showOpenFilePicker({
@@ -1804,6 +1834,7 @@ async function gdBackup() {
       headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
       body,
     });
+    setDirty(false);
     gdStatus(`✓ Backed up as ${name}`);
   } catch (err) {
     gdStatus('✗ ' + err.message);
@@ -1894,7 +1925,7 @@ function sampleDoc() {
 
 /* ------------------------------ toolbar & settings wiring ------------------------------ */
 $('#btnToday').addEventListener('click', () => centerOn(todayDay()));
-$('#btnFit').addEventListener('click', () => { fitView(); touch(); });
+$('#btnFit').addEventListener('click', () => { fitView(); touchView(); });
 $('#btnZoomIn').addEventListener('click', () => zoomAt(W / 2, 1.35));
 $('#btnZoomOut').addEventListener('click', () => zoomAt(W / 2, 1 / 1.35));
 $('#btnAddNote').addEventListener('click', () => openDayEditor(todayDay()));
@@ -1913,8 +1944,8 @@ $('#btnExport').addEventListener('click', exportHtml);
 
 $('#docTitle').addEventListener('input', () => {
   data.title = $('#docTitle').value;
-  document.title = `${data.title} — Timeliner`;
   touch();
+  updateTitle();
 });
 
 /* theme */
@@ -1947,8 +1978,8 @@ $('#settingsClose').addEventListener('click', () => $('#dlgSettings').close());
 $('#setTitle').addEventListener('input', () => {
   data.title = $('#setTitle').value;
   $('#docTitle').value = data.title;
-  document.title = `${data.title} — Timeliner`;
   touch();
+  updateTitle();
 });
 function armTwice(btn, label, fn) {
   btn.addEventListener('click', () => {
@@ -1989,13 +2020,18 @@ function boot() {
     doc = saved ? JSON.parse(saved) : null;
   }
   try {
-    adopt(doc || newDoc(), { fit: false });
+    // unsaved-changes flag survives reloads alongside the autosave
+    const wasDirty = !!(doc && doc.docId && localStorage.getItem(dirtyKey(doc.docId)) === '1');
+    adopt(doc || newDoc(), { fit: false, dirty: wasDirty });
   } catch (err) {
     console.error('Failed to load stored document, starting fresh', err);
     adopt(newDoc(), { fit: true });
   }
   new ResizeObserver(() => invalidate()).observe(wrap);
-  window.addEventListener('beforeunload', flushSave);
+  window.addEventListener('beforeunload', e => {
+    flushSave();
+    if (dirty) { e.preventDefault(); e.returnValue = ''; }   // browser asks "Leave site?"
+  });
   document.addEventListener('visibilitychange', () => { if (document.hidden) flushSave(); });
 }
 boot();
