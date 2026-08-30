@@ -170,6 +170,32 @@ dialog textarea { resize: vertical; min-height: 90px; }
 .dm-clear:hover { color: var(--danger); background: var(--plane); }
 .dm-unset input[type="range"] { opacity: 0.35; }
 
+/* series entry */
+.ser-current {
+  display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center;
+  margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--plane);
+}
+.ser-day { font-weight: 650; font-size: 15px; }
+.ser-day small { color: var(--accent); font-weight: 600; font-size: 11px; margin-left: 6px; }
+.ser-sub { color: var(--muted); font-size: 11px; margin-top: 2px; }
+dialog input#serInput {
+  width: 120px; font-size: 18px; text-align: center; padding: 6px 8px; border-radius: 8px;
+  background: var(--surface); font-variant-numeric: tabular-nums;
+}
+dialog input#serInput.bad { outline: 2px solid var(--danger); outline-offset: -1px; }
+.ser-keys { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.ser-key { border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; font-size: 11.5px; cursor: pointer; background: var(--surface); color: var(--ink2); }
+.ser-key:hover { color: var(--ink); border-color: var(--ink2); }
+.ser-key b { color: var(--ink); margin-right: 5px; font-variant-numeric: tabular-nums; }
+.ser-msg { color: var(--danger); font-size: 11.5px; min-height: 15px; margin-top: 6px; }
+.ser-log { margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.ser-row { display: grid; grid-template-columns: 1fr 90px; padding: 4px 10px; font-size: 12px; border-bottom: 1px solid var(--grid); cursor: pointer; color: var(--ink2); }
+.ser-row:last-child { border-bottom: none; }
+.ser-row:hover { color: var(--ink); }
+.ser-row.cur { background: var(--plane); color: var(--ink); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); }
+.ser-row .v { text-align: right; font-variant-numeric: tabular-nums; }
+.ser-row.today .d::after { content: " · today"; color: var(--accent); font-weight: 600; font-size: 10.5px; }
+
 /* metric manager */
 .mrow { border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin: 8px 0; background: var(--plane); }
 .mrow .line1 { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -224,6 +250,7 @@ legend { color: var(--ink2); font-size: 12px; padding: 0 4px; }
   <div class="tb-group">
     <button class="btn" id="btnAddNote" title="Add or edit today's entry (N)">+ Entry</button>
     <button class="btn" id="btnAddSpan" title="Add a multi-day event span">+ Span</button>
+    <button class="btn" id="btnSeries" title="Fill one metric across many days from the keyboard (Q)">Series</button>
     <button class="btn" id="btnMetrics" title="Manage tracked metrics">Metrics</button>
     <button class="btn" id="btnTable" title="All data as a table">Table</button>
   </div>
@@ -280,6 +307,35 @@ legend { color: var(--ink2); font-size: 12px; padding: 0 4px; }
     <span class="grow"></span>
     <button class="btn" id="dayCancel" type="button">Cancel</button>
     <button class="btn primary" id="daySave" type="button">Save</button>
+  </div>
+</dialog>
+
+<!-- ============================== SERIES ENTRY ============================== -->
+<dialog id="dlgSeries">
+  <div class="dlg-head"><h2>Series entry</h2></div>
+  <div class="dlg-body">
+    <p class="hint" style="margin-top:0">Fill one metric across many days from the keyboard. Type a value and press <b>Enter</b> (or <b>Tab</b>) to store it and move to the next day. Enter on an empty box skips the day; <b>x</b> clears it; <b>↑</b>/<b>↓</b> step a day without storing; <b>Shift+Tab</b> goes back. Values are stored as you go.</p>
+    <div class="inline" style="flex-wrap:wrap">
+      <label class="fld" style="margin:0">Metric <select id="serMetric"></select></label>
+      <label class="fld" style="margin:0">Start <input type="date" id="serStart"></label>
+      <label class="fld" style="margin:0">Direction
+        <select id="serDir"><option value="1">forward (older → newer)</option><option value="-1">backward (newer → older)</option></select>
+      </label>
+    </div>
+    <div class="ser-current">
+      <div>
+        <div class="ser-day" id="serDay"></div>
+        <div class="ser-sub" id="serSub"></div>
+      </div>
+      <input id="serInput" type="text" inputmode="decimal" autocomplete="off" spellcheck="false">
+      <div class="ser-keys" id="serKeys"></div>
+    </div>
+    <div class="ser-msg" id="serMsg"></div>
+    <div class="ser-log" id="serLog"></div>
+  </div>
+  <div class="dlg-foot">
+    <span class="grow"></span>
+    <button class="btn primary" id="serClose" type="button">Done</button>
   </div>
 </dialog>
 
@@ -1290,6 +1346,7 @@ document.addEventListener('keydown', e => {
     case 't': case 'T': case 'Home': centerOn(todayDay()); break;
     case 'f': case 'F': fitView(); touchView(); break;
     case 'n': case 'N': openDayEditor(todayDay()); break;
+    case 'q': case 'Q': openSeries(); break;
   }
 });
 
@@ -1417,6 +1474,140 @@ $('#dayDelete').addEventListener('click', () => {
   dlgDay.close();
 });
 $('#dayCancel').addEventListener('click', () => dlgDay.close());
+
+/* ------------------------------ series entry (one metric, many days, keyboard-first) ------------------------------ */
+const dlgSeries = $('#dlgSeries');
+const ser = { mid: null, day: null, dir: 1 };
+
+function openSeries(day) {
+  if (!data.metrics.length) { openMetrics(); return; }
+  const sel = $('#serMetric');
+  sel.textContent = '';
+  for (const m of data.metrics) { const o = el('option', '', m.name); o.value = m.id; sel.append(o); }
+  if (!data.metrics.some(m => m.id === ser.mid)) ser.mid = data.metrics[0].id;
+  sel.value = ser.mid;
+  $('#serDir').value = String(ser.dir);
+  ser.day = day !== undefined ? day : serDefaultStart(ser.mid);
+  serPaint();
+  dlgSeries.showModal();
+  serFocus();
+}
+// Default start: the day after this metric's latest value (capped at today), or today.
+function serDefaultStart(mid) {
+  const t = todayDay();
+  const last = lastValueBefore(t + 1, mid);
+  return last ? Math.min(last.day + 1, t) : t;
+}
+const serMetric = () => data.metrics.find(m => m.id === ser.mid);
+function serValueOf(day) { const e = entryByDay.get(day); return e && e.v ? e.v[ser.mid] : undefined; }
+function serFocus() { const inp = $('#serInput'); inp.focus(); inp.select(); }
+
+// Quick-pick choices: level index → label, or every step of a small numeric range.
+function serChoices(m) {
+  if (m.type === 'levels') return m.levels.map((lv, i) => ({ key: String(i + 1), label: lv, value: lv }));
+  const st = m.step || 1, n = Math.round((m.max - m.min) / st);
+  if (!(n >= 0 && n <= 12)) return [];
+  return Array.from({ length: n + 1 }, (_, i) => { const v = Math.round((m.min + i * st) * 1000) / 1000; return { key: String(v), label: '', value: v }; });
+}
+
+function serPaint() {
+  const m = serMetric();
+  const t = todayDay();
+  $('#serStart').value = isoFromDay(ser.day);
+  const dayEl = $('#serDay');
+  dayEl.textContent = fmtHuman(ser.day);
+  if (ser.day === t) dayEl.append(el('small', '', 'today'));
+  const cur = serValueOf(ser.day);
+  $('#serSub').textContent = cur === undefined ? `${m.name}: no value yet` : `${m.name}: currently ${fmtVal(m, cur)} — Enter keeps it`;
+  const inp = $('#serInput');
+  inp.classList.remove('bad');
+  inp.value = cur === undefined ? '' : String(cur);
+  inp.placeholder = m.type === 'scale' ? `${m.min}–${m.max}` : `1–${m.levels.length}`;
+  $('#serMsg').textContent = '';
+
+  const keys = $('#serKeys');
+  keys.textContent = '';
+  for (const c of serChoices(m)) {
+    const b = el('button', 'ser-key');
+    b.type = 'button'; b.tabIndex = -1;
+    b.append(el('b', '', c.key));
+    if (c.label) b.append(document.createTextNode(c.label));
+    b.addEventListener('click', () => { serCommit(c.value); serMove(ser.dir); });
+    keys.append(b);
+  }
+  const clr = el('button', 'ser-key');
+  clr.type = 'button'; clr.tabIndex = -1; clr.title = 'Remove this day’s value';
+  clr.append(el('b', '', 'x'), document.createTextNode('clear'));
+  clr.addEventListener('click', () => { serCommit(undefined); serMove(ser.dir); });
+  keys.append(clr);
+
+  // context: a window of days around the cursor, always in chronological order
+  const log = $('#serLog');
+  log.textContent = '';
+  const back = ser.dir === 1 ? 6 : 3, fwd = ser.dir === 1 ? 3 : 6;
+  for (let d = ser.day - back; d <= ser.day + fwd; d++) {
+    const row = el('div', 'ser-row' + (d === ser.day ? ' cur' : '') + (d === t ? ' today' : ''));
+    row.append(el('span', 'd', fmtHuman(d)), el('span', 'v', fmtVal(m, serValueOf(d))));
+    row.addEventListener('click', () => { ser.day = d; serPaint(); serFocus(); });
+    log.append(row);
+  }
+  // keep the chart following the cursor so the line grows as you type
+  const x = xC(ser.day);
+  if (x < 24 || x > W - 24) centerOn(ser.day);
+}
+
+function serParse(text) {
+  const m = serMetric();
+  const s = text.trim();
+  if (s === '') return { skip: true };
+  if (/^(x|-|clear)$/i.test(s)) return { value: undefined };
+  if (m.type === 'scale') {
+    const n = Number(s);
+    if (!Number.isFinite(n) || n < m.min || n > m.max) return { error: `Enter a number from ${m.min} to ${m.max} (or x to clear)` };
+    return { value: n };
+  }
+  const k = m.levels.length;
+  if (/^\d+$/.test(s)) {
+    const i = parseInt(s, 10);
+    return i >= 1 && i <= k ? { value: m.levels[i - 1] } : { error: `Enter 1–${k} (or x to clear)` };
+  }
+  const lower = s.toLowerCase();
+  const exact = m.levels.find(lv => lv.toLowerCase() === lower);
+  if (exact) return { value: exact };
+  const pref = m.levels.filter(lv => lv.toLowerCase().startsWith(lower));
+  if (pref.length === 1) return { value: pref[0] };
+  return { error: pref.length ? `“${s}” is ambiguous — type the number` : `Enter 1–${k} or a label (or x to clear)` };
+}
+function serCommit(value) {
+  const iso = isoFromDay(ser.day);
+  const e = data.entries[iso] || {};
+  if (value === undefined) {
+    if (e.v) { delete e.v[ser.mid]; if (!Object.keys(e.v).length) delete e.v; }
+  } else {
+    e.v = e.v || {};
+    e.v[ser.mid] = value;
+  }
+  if (e.v || e.note) data.entries[iso] = e; else delete data.entries[iso];
+  reindex(); touch(); updateEmptyState(); invalidate();
+}
+function serMove(delta) { ser.day += delta; serPaint(); serFocus(); }
+function serEnter() {
+  const r = serParse($('#serInput').value);
+  if (r.error) { $('#serInput').classList.add('bad'); $('#serMsg').textContent = r.error; return; }
+  if (!r.skip) serCommit(r.value);
+  serMove(ser.dir);
+}
+$('#serInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey)) { e.preventDefault(); serEnter(); }
+  else if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); serMove(-ser.dir); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); serMove(-1); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); serMove(1); }
+});
+$('#serMetric').addEventListener('change', () => { ser.mid = $('#serMetric').value; serPaint(); serFocus(); });
+$('#serDir').addEventListener('change', () => { ser.dir = +$('#serDir').value; serPaint(); serFocus(); });
+$('#serStart').addEventListener('change', () => { const v = $('#serStart').value; if (v) { ser.day = dayFromISO(v); serPaint(); serFocus(); } });
+$('#serClose').addEventListener('click', () => dlgSeries.close());
+$('#btnSeries').addEventListener('click', () => openSeries());
 
 /* ------------------------------ note viewer ------------------------------ */
 const dlgNote = $('#dlgNote');
