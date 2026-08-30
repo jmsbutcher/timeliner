@@ -1297,16 +1297,19 @@ function buildDayForm(day) {
       range.type = 'range'; range.min = m.min; range.max = m.max; range.step = m.step || 1;
       const num = document.createElement('input');
       num.type = 'number'; num.min = m.min; num.max = m.max; num.step = m.step || 1;
+      num.placeholder = '—';
+      // "unset" = no value recorded: number blank, slider parked at the minimum and dimmed
+      const setUnset = () => { num.value = ''; range.value = m.min; row.classList.add('dm-unset'); };
       if (typeof cur === 'number') { range.value = cur; num.value = cur; }
-      else { range.value = (m.min + m.max) / 2; num.value = ''; row.classList.add('dm-unset'); }
+      else setUnset();
       range.addEventListener('input', () => { num.value = range.value; row.classList.remove('dm-unset'); });
       num.addEventListener('input', () => {
-        if (num.value === '') row.classList.add('dm-unset');
+        if (num.value === '') setUnset();
         else { range.value = num.value; row.classList.remove('dm-unset'); }
       });
       const clr = el('button', 'dm-clear', '✕');
       clr.type = 'button'; clr.title = 'No data for this day';
-      clr.addEventListener('click', () => { num.value = ''; row.classList.add('dm-unset'); });
+      clr.addEventListener('click', setUnset);
       row.append(range, num, clr);
     } else {
       const sel = document.createElement('select');
