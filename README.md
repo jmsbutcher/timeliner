@@ -23,6 +23,16 @@ and your data never leaves your machine unless you choose to back it up.
   is one click.
 - **Series entry.** Backfill one metric across many days from the keyboard:
   type a value, press **Enter**, type the next one… (see the walkthrough).
+- **Overlay view.** Toggle **Overlay** (or press **O**) to superimpose every
+  metric on one graph, each scaled to its own min–max range. Click the legend
+  chips to show or hide individual metrics.
+- **Starred days.** Mark a significant day with a ★ — it stands out on the
+  note strip and its headline shows earlier, bolder, and longer, pulling the
+  reader toward that day's journal entry.
+- **Inverted scales.** Flip any metric's axis (*invert axis* in the metric
+  editor) for scales where the low number is the good end (1 = best).
+- **Gaps, your way.** By default the line bridges up to 3 missed days; a
+  Settings toggle makes any missed day break the line instead.
 - **Event spans.** Drag on the span strip (below the time axis) to mark
   multi-day events — vacations, medication trials, illnesses. They render as
   colored bars plus a tinted background band. Drag a bar to move it, drag its
@@ -72,6 +82,9 @@ shows a row per metric plus a headline and a journal field.
   `—` in the number box. The **✕** button returns a metric to that state, so
   you can record "no data" for a day.
 - Headline and journal are never prefilled.
+- **Clear metrics** unsets every metric row at once — for days where you only
+  want to write, save a journal-only entry with no values.
+- The **☆** button in the header stars the day (next section).
 - **Clear day** removes the whole entry.
 
 ### 3. Enter a series of values (keyboard-first)
@@ -101,13 +114,34 @@ When you have a stretch of days to backfill for one metric, open **Series**
 
 The quick-key chips are clickable too, for mouse users.
 
-### 4. Mark events
+### 4. Star the days that matter
+
+Some days deserve to be found again. Star a day with the **☆** button in the
+Day entry header, or with **☆ Star** when reading a note. On the note strip a
+starred day draws an amber ★ instead of a dot, and its headline appears at
+lower zoom, bolder and longer than ordinary notes — so a reader scanning the
+timeline is drawn to open exactly those entries. A day can be starred on its
+own, even with no values and no note.
+
+![A starred day's headline standing out on the note strip](docs/starred-day.jpg)
+
+### 5. Compare metrics with Overlay
+
+Press **O** (or click **Overlay**) to superimpose all metrics on one graph.
+Each metric is scaled to its own min–max range so shapes are comparable even
+when the scales aren't. Click a legend chip to hide or show that metric — and
+if a metric reads "backwards" (1 = best), turn on *invert axis* in the metric
+editor so all the lines agree about which way is up.
+
+![Overlay view: three metrics superimposed, with clickable legend chips](docs/overlay-view.jpg)
+
+### 6. Mark events
 
 Drag across the strip just below the time axis to create a span; give it a
 label and a color. Drag a bar to move it, drag its ends to resize it, click it
 to edit or delete.
 
-### 5. Save your file
+### 7. Save your file
 
 Autosave to the browser is always on, so closing the tab loses nothing. But the
 browser's storage isn't a backup: press **Ctrl+S** (or click **Save**) to
@@ -200,6 +234,7 @@ created itself.
 | `F` | fit all data |
 | `N` | log today |
 | `Q` | series entry (one metric, many days) |
+| `O` | toggle overlay view |
 | `Ctrl+S` / `Ctrl+Shift+S` | save / save as (works anywhere, even inside dialogs) |
 | `Ctrl+O` | open file |
 
