@@ -996,6 +996,8 @@ function metricNorm(m, v) {
   if (i === -1) return null;
   return m.levels.length < 2 ? 0.5 : i / (m.levels.length - 1);
 }
+// display-side normalization: metrics can flip their lane so "up" means whatever reads best
+const dispNorm = (m, norm) => (m.invert ? 1 - norm : norm);
 function fmtVal(m, v) {
   if (v === undefined || v === null) return '—';
   return typeof v === 'number' ? String(Math.round(v * 100) / 100) : String(v);
@@ -1070,7 +1072,7 @@ function drawLanes(g, C, L) {
       else ticks = [[0, m.levels[0]], [1, m.levels[k - 1]]];
     }
     for (const [norm, label] of ticks) {
-      const y = yFor(norm);
+      const y = yFor(dispNorm(m, norm));
       g.strokeStyle = C.grid; g.lineWidth = 1;
       g.beginPath(); g.moveTo(0, Math.round(y) + 0.5); g.lineTo(W, Math.round(y) + 0.5); g.stroke();
       g.fillStyle = C.muted;
@@ -1093,7 +1095,7 @@ function drawLanes(g, C, L) {
       const e = entryByDay.get(d);
       const norm = e.v ? metricNorm(m, e.v[m.id]) : null;
       if (norm === null || norm === undefined) continue;
-      pts.push({ d, x: xC(d), y: yFor(norm) });
+      pts.push({ d, x: xC(d), y: yFor(dispNorm(m, norm)) });
     }
     drawSeries(g, C, pts, col, maxGap, showMarkers);
   });
@@ -1145,7 +1147,7 @@ function drawOverlay(g, C, L) {
       const e = entryByDay.get(d);
       const norm = e.v ? metricNorm(m, e.v[m.id]) : null;
       if (norm === null || norm === undefined) continue;
-      pts.push({ d, x: xC(d), y: yFor(norm) });
+      pts.push({ d, x: xC(d), y: yFor(dispNorm(m, norm)) });
     }
     drawSeries(g, C, pts, resolveColor(m.color), maxGap, showMarkers);
   }
@@ -1204,7 +1206,7 @@ function drawHover(g, C, L) {
         if (data.prefs.overlay.hidden[m.id]) continue;
         const norm = metricNorm(m, e.v[m.id]);
         if (norm === null || norm === undefined) continue;
-        mark(m, OL.plotY + (1 - norm) * OL.plotH);
+        mark(m, OL.plotY + (1 - dispNorm(m, norm)) * OL.plotH);
       }
     } else {
       const laneH = (H - L.lanesTop) / data.metrics.length;
@@ -1213,7 +1215,7 @@ function drawHover(g, C, L) {
         if (norm === null || norm === undefined) return;
         const y0 = L.lanesTop + i * laneH;
         const padT = Math.min(28, laneH * 0.3), padB = Math.min(14, laneH * 0.18);
-        mark(m, y0 + padT + (1 - norm) * Math.max(6, laneH - padT - padB));
+        mark(m, y0 + padT + (1 - dispNorm(m, norm)) * Math.max(6, laneH - padT - padB));
       });
     }
   }
@@ -1903,6 +1905,19 @@ function renderMetricList() {
         });
         cfg.append(inp);
       }
+      const invLbl = el('label', 'cfg-lbl');
+      invLbl.title = 'Flip this metric’s axis so the top of the lane is the minimum / first label (e.g. when 1 = best)';
+      invLbl.style.cssText = 'display:inline-flex; align-items:center; gap:5px; cursor:pointer';
+      const inv = document.createElement('input');
+      inv.type = 'checkbox';
+      inv.style.width = 'auto';
+      inv.checked = !!m.invert;
+      inv.addEventListener('change', () => {
+        if (inv.checked) m.invert = true; else delete m.invert;
+        touch(); invalidate();
+      });
+      invLbl.append(inv, document.createTextNode('invert axis'));
+      cfg.append(invLbl);
     };
     buildCfg();
     type.addEventListener('change', () => {
