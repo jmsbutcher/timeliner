@@ -304,6 +304,7 @@ legend { color: var(--ink2); font-size: 12px; padding: 0 4px; }
   </div>
   <div class="dlg-foot">
     <button class="btn danger" id="dayDelete" type="button">Clear day</button>
+    <button class="btn" id="dayClearMetrics" type="button" title="Unset every metric for this day — the note stays">Clear metrics</button>
     <span class="grow"></span>
     <button class="btn" id="dayCancel" type="button">Cancel</button>
     <button class="btn primary" id="daySave" type="button">Save</button>
@@ -1467,6 +1468,17 @@ $('#daySave').addEventListener('click', () => {
   else delete data.entries[iso];
   reindex(); touch(); updateEmptyState(); invalidate();
   dlgDay.close();
+});
+// Journal-only days: unset every metric in the form (values already saved are
+// untouched until Save) so only the note is stored.
+$('#dayClearMetrics').addEventListener('click', () => {
+  for (const row of $('#dayMetrics').querySelectorAll('.dm-row')) {
+    const clr = row.querySelector('.dm-clear');
+    if (clr) clr.click();
+    const sel = row.querySelector('select');
+    if (sel) sel.value = '';
+  }
+  $('#dayPrefillHint').hidden = true;
 });
 $('#dayDelete').addEventListener('click', () => {
   delete data.entries[isoFromDay(dayTarget)];
