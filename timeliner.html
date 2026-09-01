@@ -89,6 +89,7 @@ input, select, textarea { font: inherit; color: var(--ink); }
 .btn.danger { color: var(--danger); border-color: var(--danger); }
 .btn.danger:hover { background: var(--danger); color: #fff; }
 .btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.star-on { color: var(--series-4); border-color: var(--series-4); }
 .btn:disabled { opacity: 0.45; cursor: default; }
 .btn.iconbtn { padding: 5px 8px; }
 
@@ -294,6 +295,7 @@ legend { color: var(--ink2); font-size: 12px; padding: 0 4px; }
 <dialog id="dlgDay">
   <div class="dlg-head">
     <h2>Day entry</h2>
+    <button class="btn iconbtn" id="dayStar" type="button" title="Star this day — mark it as significant">☆</button>
     <input type="date" id="dayDate" style="width:auto">
   </div>
   <div class="dlg-body">
@@ -388,6 +390,7 @@ legend { color: var(--ink2); font-size: 12px; padding: 0 4px; }
   <div class="dlg-body"><div class="prose" id="noteBody"></div></div>
   <div class="dlg-foot">
     <button class="btn" id="noteEdit" type="button">Edit day</button>
+    <button class="btn" id="noteStar" type="button">☆ Star</button>
     <span class="grow"></span>
     <button class="btn primary" id="noteClose" type="button">Close</button>
   </div>
@@ -555,8 +558,9 @@ function reindex() {
   }
   entryDays = [...entryByDay.keys()].sort((a, b) => a - b);
   noteDays = entryDays.filter(d => {
-    const n = entryByDay.get(d).note;
-    return n && ((n.title && n.title.trim()) || (n.body && n.body.trim()));
+    const e = entryByDay.get(d);
+    const n = e.note;
+    return !!e.star || (n && ((n.title && n.title.trim()) || (n.body && n.body.trim())));
   });
   // greedy row assignment for overlapping spans
   spanRows = new Map();
@@ -935,23 +939,37 @@ function drawNoteStrip(g, C, L) {
   const d0 = dayAt(-30), d1 = dayAt(W + 30);
   const visible = noteDays.filter(d => d >= d0 && d <= d1);
 
+  const STAR = C.series[3];   // amber — reads as a star in both themes
   if (p >= 5) {
     for (let i = 0; i < visible.length; i++) {
       const d = visible[i];
       const x = xC(d);
       const e = entryByDay.get(d);
-      const title = (e.note.title || '').trim() || (e.note.body || '').trim().split('\n')[0];
-      g.fillStyle = C.ink2;
-      g.beginPath(); g.arc(x, yMid, 3.5, 0, Math.PI * 2); g.fill();
-      g.lineWidth = 2; g.strokeStyle = C.surface; g.stroke();
-      let hit = { x: x - 7, y: yMid - 8, w: 14, h: 16, kind: 'note', day: d };
-      if (p >= 48 && title) {
-        g.font = `11px ${F}`;
+      const starred = !!e.star;
+      const note = e.note || {};
+      const title = (note.title || '').trim() || (note.body || '').trim().split('\n')[0];
+      if (starred) {
+        g.font = `13px ${F}`;
+        const sw = g.measureText('★').width;
+        g.lineWidth = 3; g.strokeStyle = C.surface;
+        g.strokeText('★', x - sw / 2, yMid + 4.5);
+        g.fillStyle = STAR;
+        g.fillText('★', x - sw / 2, yMid + 4.5);
+      } else {
+        g.fillStyle = C.ink2;
+        g.beginPath(); g.arc(x, yMid, 3.5, 0, Math.PI * 2); g.fill();
+        g.lineWidth = 2; g.strokeStyle = C.surface; g.stroke();
+      }
+      let hit = { x: x - 8, y: yMid - 9, w: 16, h: 18, kind: 'note', day: d };
+      // starred headlines surface earlier, bolder, and longer — they should pull the eye
+      if (title && (p >= 48 || (starred && p >= 20))) {
+        g.font = starred ? `600 11px ${F}` : `11px ${F}`;
         const next = i + 1 < visible.length ? xC(visible[i + 1]) : Infinity;
-        const maxW = clamp(next - x - 18, Math.min(p - 14, 60), 230);
+        const maxW = clamp(next - x - 18, Math.min(p - 14, 60), starred ? 330 : 230);
         let t = title;
         while (t.length > 1 && g.measureText(t + '…').width > maxW) t = t.slice(0, -1);
         if (t !== title) t += '…';
+        g.fillStyle = starred ? C.ink : C.ink2;
         haloText(g, t, x + 8, yMid + 3.5);
         hit.w = 14 + 8 + g.measureText(t).width;
       }
@@ -965,17 +983,24 @@ function drawNoteStrip(g, C, L) {
       if (!bins.has(b)) bins.set(b, []);
       bins.get(b).push(d);
     }
-    g.font = `600 9.5px ${F}`;
     for (const [b, days] of bins) {
       const x = b * 16;
+      const anyStar = days.some(dd => !!entryByDay.get(dd).star);
       if (days.length === 1) {
-        g.fillStyle = C.ink2;
-        g.beginPath(); g.arc(x, yMid, 3, 0, Math.PI * 2); g.fill();
+        if (anyStar) {
+          g.font = `10px ${F}`;
+          g.fillStyle = STAR;
+          g.fillText('★', x - g.measureText('★').width / 2, yMid + 3.5);
+        } else {
+          g.fillStyle = C.ink2;
+          g.beginPath(); g.arc(x, yMid, 3, 0, Math.PI * 2); g.fill();
+        }
         hits.push({ x: x - 6, y: yMid - 7, w: 12, h: 14, kind: 'note', day: days[0] });
       } else {
-        const label = String(days.length);
+        g.font = `600 9.5px ${F}`;
+        const label = (anyStar ? '★' : '') + days.length;
         const w = Math.max(16, g.measureText(label).width + 9);
-        g.fillStyle = C.grid;
+        g.fillStyle = anyStar ? withAlpha(STAR, 0.3) : C.grid;
         rrect(g, x - w / 2, yMid - 7, w, 14, 7); g.fill();
         g.fillStyle = C.ink2;
         g.fillText(label, x - g.measureText(label).width / 2, yMid + 3.5);
@@ -1244,7 +1269,7 @@ function updateTooltip(px, py, day) {
   const e = entryByDay.get(day);
   const spansHere = data.spans.filter(sp => dayFromISO(sp.start) <= day && day <= dayFromISO(sp.end));
   tooltip.textContent = '';
-  tooltip.append(el('div', 'tt-date', fmtHuman(day)));
+  tooltip.append(el('div', 'tt-date', (e && e.star ? '★ ' : '') + fmtHuman(day)));
   for (const m of data.metrics) {
     const row = el('div', 'tt-row');
     const key = el('i', 'tt-key');
@@ -1465,7 +1490,14 @@ document.addEventListener('keydown', e => {
 
 /* ------------------------------ day editor ------------------------------ */
 const dlgDay = $('#dlgDay');
-let dayTarget = null;
+let dayTarget = null, dayStarred = false;
+
+function syncDayStar() {
+  const b = $('#dayStar');
+  b.textContent = dayStarred ? '★' : '☆';
+  b.classList.toggle('star-on', dayStarred);
+}
+$('#dayStar').addEventListener('click', () => { dayStarred = !dayStarred; syncDayStar(); });
 
 function openDayEditor(day) {
   dayTarget = day;
@@ -1485,6 +1517,8 @@ function lastValueBefore(day, mid) {
 }
 function buildDayForm(day) {
   const e = entryByDay.get(day);
+  dayStarred = !!(e && e.star);
+  syncDayStar();
   const box = $('#dayMetrics');
   box.textContent = '';
   if (data.metrics.length === 0) {
@@ -1576,6 +1610,7 @@ $('#daySave').addEventListener('click', () => {
     if (title) entry.note.title = title;
     if (body) entry.note.body = body;
   }
+  if (dayStarred) entry.star = true;
   if (Object.keys(entry).length) data.entries[iso] = entry;
   else delete data.entries[iso];
   reindex(); touch(); updateEmptyState(); invalidate();
@@ -1740,7 +1775,8 @@ function openNoteViewer(day) {
   const e = entryByDay.get(day);
   if (!e || !e.note) return openDayEditor(day);
   noteDay = day;
-  $('#noteTitle').textContent = (e.note.title || '').trim() || 'Journal entry';
+  $('#noteTitle').textContent = (e.star ? '★ ' : '') + ((e.note.title || '').trim() || 'Journal entry');
+  syncNoteStar();
   $('#noteDate').textContent = fmtHuman(day);
   const box = $('#noteBody');
   box.textContent = '';
@@ -1762,6 +1798,21 @@ function openNoteViewer(day) {
 }
 $('#noteEdit').addEventListener('click', () => { dlgNote.close(); openDayEditor(noteDay); });
 $('#noteClose').addEventListener('click', () => dlgNote.close());
+function syncNoteStar() {
+  const e = entryByDay.get(noteDay);
+  const starred = !!(e && e.star);
+  const b = $('#noteStar');
+  b.textContent = starred ? '★ Starred' : '☆ Star';
+  b.classList.toggle('star-on', starred);
+}
+$('#noteStar').addEventListener('click', () => {
+  const e = data.entries[isoFromDay(noteDay)];
+  if (!e) return;
+  if (e.star) delete e.star; else e.star = true;
+  reindex(); touch(); invalidate();
+  syncNoteStar();
+  $('#noteTitle').textContent = (e.star ? '★ ' : '') + ((e.note.title || '').trim() || 'Journal entry');
+});
 
 /* ------------------------------ span dialog ------------------------------ */
 const dlgSpan = $('#dlgSpan');
@@ -1869,7 +1920,7 @@ function renderMetricList() {
       for (const iso of Object.keys(data.entries)) {
         const e = data.entries[iso];
         if (e.v) { delete e.v[m.id]; if (!Object.keys(e.v).length) delete e.v; }
-        if (!e.v && !e.note) delete data.entries[iso];
+        if (!e.v && !e.note && !e.star) delete data.entries[iso];
       }
       reindex(); touch(); updateEmptyState(); invalidate(); renderMetricList();
     });
@@ -1973,7 +2024,7 @@ function openTable() {
     const tr = document.createElement('tr');
     tr.append(el('td', '', isoFromDay(d)));
     for (const m of data.metrics) tr.append(el('td', 'num', fmtVal(m, e.v ? e.v[m.id] : undefined)));
-    const noteTxt = e.note ? ((e.note.title || '').trim() || (e.note.body || '').trim().split('\n')[0]) : '';
+    const noteTxt = (e.star ? '★ ' : '') + (e.note ? ((e.note.title || '').trim() || (e.note.body || '').trim().split('\n')[0]) : '');
     tr.append(el('td', 'notecell', noteTxt));
     tr.addEventListener('click', () => { $('#dlgTable').close(); openDayEditor(d); });
     tbody.append(tr);
