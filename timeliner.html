@@ -88,6 +88,7 @@ input, select, textarea { font: inherit; color: var(--ink); }
 .btn.primary:hover { filter: brightness(1.08); color: #fff; }
 .btn.danger { color: var(--danger); border-color: var(--danger); }
 .btn.danger:hover { background: var(--danger); color: #fff; }
+.btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn:disabled { opacity: 0.45; cursor: default; }
 .btn.iconbtn { padding: 5px 8px; }
 
@@ -244,6 +245,7 @@ legend { color: var(--ink2); font-size: 12px; padding: 0 4px; }
   <div class="tb-group">
     <button class="btn" id="btnToday" title="Center on today (T)">Today</button>
     <button class="btn" id="btnFit" title="Fit all data (F)">Fit</button>
+    <button class="btn" id="btnOverlay" title="Superimpose all metrics on one graph, each scaled to its own range (O)">Overlay</button>
     <button class="btn iconbtn" id="btnZoomOut" title="Zoom out (−)">−</button>
     <button class="btn iconbtn" id="btnZoomIn" title="Zoom in (+)">+</button>
   </div>
@@ -528,7 +530,7 @@ function newDoc() {
   return {
     app: 'timeliner', version: 1, docId: 'default',
     title: 'My Timeline', metrics: [], entries: {}, spans: [], view: null,
-    prefs: { bridgeGaps: true },
+    prefs: { bridgeGaps: true, overlay: { on: false, hidden: {} } },
   };
 }
 let data = newDoc();
@@ -634,6 +636,9 @@ function validateDoc(d) {
   d.entries = d.entries || {};
   d.prefs = d.prefs && typeof d.prefs === 'object' ? d.prefs : {};
   if (typeof d.prefs.bridgeGaps !== 'boolean') d.prefs.bridgeGaps = true;
+  if (!d.prefs.overlay || typeof d.prefs.overlay !== 'object') d.prefs.overlay = {};
+  d.prefs.overlay.on = !!d.prefs.overlay.on;
+  if (!d.prefs.overlay.hidden || typeof d.prefs.overlay.hidden !== 'object') d.prefs.overlay.hidden = {};
   for (const sp of d.spans) { sp.id = sp.id || uid(); sp.color = sp.color || 'slot:1'; }
   for (const m of d.metrics) {
     m.id = m.id || uid();
@@ -656,6 +661,7 @@ function adopt(doc, { fit = false, dirty: wasDirty = false } = {}) {
     fitView();
   }
   setDirty(wasDirty);
+  syncOverlayBtn();
   flushSave();
   updateEmptyState();
   invalidate();
@@ -995,18 +1001,47 @@ function fmtVal(m, v) {
   return typeof v === 'number' ? String(Math.round(v * 100) / 100) : String(v);
 }
 
+// shared polyline + marker renderer for a metric's points
+function drawSeries(g, C, pts, col, maxGap, showMarkers) {
+  g.lineWidth = 2; g.lineJoin = 'round'; g.lineCap = 'round';
+  g.strokeStyle = col;
+  let segStart = 0;
+  for (let j = 0; j <= pts.length; j++) {
+    const brk = j === pts.length || (j > 0 && pts[j].d - pts[j - 1].d > maxGap);
+    if (brk) {
+      const len = j - segStart;
+      if (len >= 2) {
+        g.beginPath();
+        g.moveTo(pts[segStart].x, pts[segStart].y);
+        for (let q = segStart + 1; q < j; q++) g.lineTo(pts[q].x, pts[q].y);
+        g.stroke();
+      }
+      segStart = j;
+    }
+  }
+  for (let j = 0; j < pts.length; j++) {
+    const lone = (j === 0 || pts[j].d - pts[j - 1].d > maxGap) && (j === pts.length - 1 || pts[j + 1].d - pts[j].d > maxGap);
+    if (!showMarkers && !lone) continue;
+    const r = showMarkers ? 4 : 2.5;
+    g.beginPath(); g.arc(pts[j].x, pts[j].y, r, 0, Math.PI * 2);
+    g.fillStyle = col; g.fill();
+    g.lineWidth = 2; g.strokeStyle = C.surface; g.stroke();
+  }
+}
+
+function noMetricsMessage(g, C, L) {
+  if (!hasAnyData()) return;
+  g.font = '12px system-ui, -apple-system, "Segoe UI", sans-serif';
+  g.fillStyle = C.muted;
+  g.fillText('No metrics yet — open “Metrics” to add lanes.', 14, L.lanesTop + 24);
+}
+
 function drawLanes(g, C, L) {
+  if (data.prefs.overlay.on) return drawOverlay(g, C, L);
   const F = 'system-ui, -apple-system, "Segoe UI", sans-serif';
   const n = data.metrics.length;
   const area = H - L.lanesTop;
-  if (n === 0) {
-    if (hasAnyData()) {
-      g.font = `12px ${F}`;
-      g.fillStyle = C.muted;
-      g.fillText('No metrics yet — open “Metrics” to add lanes.', 14, L.lanesTop + 24);
-    }
-    return;
-  }
+  if (n === 0) return noMetricsMessage(g, C, L);
   const laneH = area / n;
   const p = view.ppd;
   const d0 = Math.floor(dayAt(-4)), d1 = Math.ceil(dayAt(W + 4));
@@ -1060,31 +1095,76 @@ function drawLanes(g, C, L) {
       if (norm === null || norm === undefined) continue;
       pts.push({ d, x: xC(d), y: yFor(norm) });
     }
-    g.lineWidth = 2; g.lineJoin = 'round'; g.lineCap = 'round';
-    g.strokeStyle = col;
-    let segStart = 0;
-    for (let j = 0; j <= pts.length; j++) {
-      const brk = j === pts.length || (j > 0 && pts[j].d - pts[j - 1].d > maxGap);
-      if (brk) {
-        const len = j - segStart;
-        if (len >= 2) {
-          g.beginPath();
-          g.moveTo(pts[segStart].x, pts[segStart].y);
-          for (let q = segStart + 1; q < j; q++) g.lineTo(pts[q].x, pts[q].y);
-          g.stroke();
-        }
-        segStart = j;
-      }
-    }
-    for (let j = 0; j < pts.length; j++) {
-      const lone = (j === 0 || pts[j].d - pts[j - 1].d > maxGap) && (j === pts.length - 1 || pts[j + 1].d - pts[j].d > maxGap);
-      if (!showMarkers && !lone) continue;
-      const r = showMarkers ? 4 : 2.5;
-      g.beginPath(); g.arc(pts[j].x, pts[j].y, r, 0, Math.PI * 2);
-      g.fillStyle = col; g.fill();
-      g.lineWidth = 2; g.strokeStyle = C.surface; g.stroke();
-    }
+    drawSeries(g, C, pts, col, maxGap, showMarkers);
   });
+}
+
+/* ---- overlay view: every metric on one plot, each scaled to its own range ---- */
+function overlayLayout(g, C, L) {
+  g.font = '600 11px system-ui, -apple-system, "Segoe UI", sans-serif';
+  const chips = [];
+  let lx = 8, ly = L.lanesTop + 8;
+  for (const m of data.metrics) {
+    const name = m.name || 'Metric';
+    const w = 9 + 12 + 6 + g.measureText(name).width + 10;
+    if (lx > 8 && lx + w > W - 8) { lx = 8; ly += 26; }
+    chips.push({ m, x: lx, y: ly, w, h: 20 });
+    lx += w + 6;
+  }
+  const plotY = (chips.length ? ly + 20 : L.lanesTop) + 18;
+  const plotH = Math.max(6, H - plotY - 16);
+  return { chips, plotY, plotH };
+}
+function drawOverlay(g, C, L) {
+  const F = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+  if (data.metrics.length === 0) return noMetricsMessage(g, C, L);
+  const hidden = data.prefs.overlay.hidden;
+  const OL = overlayLayout(g, C, L);
+  const yFor = norm => OL.plotY + (1 - norm) * OL.plotH;
+
+  // frame lines; the extremes read as each metric's own min/max
+  for (const q of [0, 0.25, 0.5, 0.75, 1]) {
+    const y = Math.round(yFor(q)) + 0.5;
+    g.strokeStyle = q === 0 || q === 1 ? C.axis : C.grid;
+    g.lineWidth = 1;
+    g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+  }
+  g.font = `10px ${F}`;
+  g.fillStyle = C.muted;
+  haloText(g, 'each metric’s max', 8, yFor(1) + 12);
+  haloText(g, 'each metric’s min', 8, yFor(0) - 5);
+
+  const maxGap = data.prefs.bridgeGaps ? 3 : 1;
+  const showMarkers = view.ppd >= 8;
+  const d0 = Math.floor(dayAt(-4)), d1 = Math.ceil(dayAt(W + 4));
+  for (const m of data.metrics) {
+    if (hidden[m.id]) continue;
+    const pts = [];
+    for (const d of entryDays) {
+      if (d < d0 - 4 || d > d1 + 4) continue;
+      const e = entryByDay.get(d);
+      const norm = e.v ? metricNorm(m, e.v[m.id]) : null;
+      if (norm === null || norm === undefined) continue;
+      pts.push({ d, x: xC(d), y: yFor(norm) });
+    }
+    drawSeries(g, C, pts, resolveColor(m.color), maxGap, showMarkers);
+  }
+
+  // clickable legend chips (click to show/hide a metric)
+  g.font = '600 11px system-ui, -apple-system, "Segoe UI", sans-serif';
+  for (const c of OL.chips) {
+    const off = hidden[c.m.id];
+    g.globalAlpha = off ? 0.45 : 1;
+    g.fillStyle = C.surface;
+    rrect(g, c.x, c.y, c.w, c.h, 10); g.fill();
+    g.strokeStyle = C.grid; g.lineWidth = 1; g.stroke();
+    g.fillStyle = resolveColor(c.m.color);
+    rrect(g, c.x + 9, c.y + c.h / 2 - 2, 12, 4, 2); g.fill();
+    g.fillStyle = off ? C.muted : C.ink2;
+    g.fillText(c.m.name || 'Metric', c.x + 27, c.y + c.h / 2 + 4);
+    g.globalAlpha = 1;
+    hits.push({ x: c.x, y: c.y, w: c.w, h: c.h, kind: 'ovLegend', mid: c.m.id });
+  }
 }
 
 /* ---- today marker, hover crosshair, drag preview ---- */
@@ -1113,17 +1193,29 @@ function drawHover(g, C, L) {
   // emphasized markers on each lane at hovered day
   const e = entryByDay.get(day);
   if (e && e.v && data.metrics.length) {
-    const laneH = (H - L.lanesTop) / data.metrics.length;
-    data.metrics.forEach((m, i) => {
-      const norm = metricNorm(m, e.v[m.id]);
-      if (norm === null || norm === undefined) return;
-      const y0 = L.lanesTop + i * laneH;
-      const padT = Math.min(28, laneH * 0.3), padB = Math.min(14, laneH * 0.18);
-      const y = y0 + padT + (1 - norm) * Math.max(6, laneH - padT - padB);
+    const mark = (m, y) => {
       g.beginPath(); g.arc(x, y, 5.5, 0, Math.PI * 2);
       g.fillStyle = resolveColor(m.color); g.fill();
       g.lineWidth = 2; g.strokeStyle = C.surface; g.stroke();
-    });
+    };
+    if (data.prefs.overlay.on) {
+      const OL = overlayLayout(g, C, L);
+      for (const m of data.metrics) {
+        if (data.prefs.overlay.hidden[m.id]) continue;
+        const norm = metricNorm(m, e.v[m.id]);
+        if (norm === null || norm === undefined) continue;
+        mark(m, OL.plotY + (1 - norm) * OL.plotH);
+      }
+    } else {
+      const laneH = (H - L.lanesTop) / data.metrics.length;
+      data.metrics.forEach((m, i) => {
+        const norm = metricNorm(m, e.v[m.id]);
+        if (norm === null || norm === undefined) return;
+        const y0 = L.lanesTop + i * laneH;
+        const padT = Math.min(28, laneH * 0.3), padB = Math.min(14, laneH * 0.18);
+        mark(m, y0 + padT + (1 - norm) * Math.max(6, laneH - padT - padB));
+      });
+    }
   }
 }
 
@@ -1298,6 +1390,11 @@ function endDrag(x, y) {
         centerOn((lo + hi) / 2, clamp(W / Math.max(hi - lo + 8, 10), view.ppd * 1.6, 60));
       }
       else if (h.kind === 'span') openSpanDialog(h.span);
+      else if (h.kind === 'ovLegend') {
+        const hid = data.prefs.overlay.hidden;
+        if (hid[h.mid]) delete hid[h.mid]; else hid[h.mid] = true;
+        touchView(); invalidate();
+      }
       return;
     }
     if (y >= L.spanY) openDayEditor(Math.floor(dayAt(x)));
@@ -1360,6 +1457,7 @@ document.addEventListener('keydown', e => {
     case 'f': case 'F': fitView(); touchView(); break;
     case 'n': case 'N': openDayEditor(todayDay()); break;
     case 'q': case 'Q': openSeries(); break;
+    case 'o': case 'O': toggleOverlay(); break;
   }
 });
 
@@ -2141,6 +2239,14 @@ function sampleDoc() {
 /* ------------------------------ toolbar & settings wiring ------------------------------ */
 $('#btnToday').addEventListener('click', () => centerOn(todayDay()));
 $('#btnFit').addEventListener('click', () => { fitView(); touchView(); });
+function toggleOverlay() {
+  data.prefs.overlay.on = !data.prefs.overlay.on;
+  syncOverlayBtn();
+  touchView();          // display preference: autosaved, but not nagged as an unsaved change
+  invalidate();
+}
+function syncOverlayBtn() { $('#btnOverlay').classList.toggle('on', data.prefs.overlay.on); }
+$('#btnOverlay').addEventListener('click', toggleOverlay);
 $('#btnZoomIn').addEventListener('click', () => zoomAt(W / 2, 1.35));
 $('#btnZoomOut').addEventListener('click', () => zoomAt(W / 2, 1 / 1.35));
 $('#btnAddNote').addEventListener('click', () => openDayEditor(todayDay()));
