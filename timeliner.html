@@ -424,6 +424,14 @@ legend { color: var(--ink2); font-size: 12px; padding: 0 4px; }
     </fieldset>
 
     <fieldset>
+      <legend>Chart</legend>
+      <label class="fld" style="display:flex; align-items:center; gap:8px">
+        <input type="checkbox" id="setBridge" style="width:auto"> Bridge short gaps in the line
+      </label>
+      <p class="hint" style="margin:4px 0 6px">Checked, the line connects across up to 3 missed days. Unchecked, any missed day breaks the line and isolated days show as dots.</p>
+    </fieldset>
+
+    <fieldset>
       <legend>Data</legend>
       <div class="inline" style="margin-top:8px; flex-wrap:wrap">
         <button class="btn" id="setSample" type="button">Load example data</button>
@@ -520,6 +528,7 @@ function newDoc() {
   return {
     app: 'timeliner', version: 1, docId: 'default',
     title: 'My Timeline', metrics: [], entries: {}, spans: [], view: null,
+    prefs: { bridgeGaps: true },
   };
 }
 let data = newDoc();
@@ -623,6 +632,8 @@ function validateDoc(d) {
   d.title = d.title || 'My Timeline';
   d.spans = Array.isArray(d.spans) ? d.spans : [];
   d.entries = d.entries || {};
+  d.prefs = d.prefs && typeof d.prefs === 'object' ? d.prefs : {};
+  if (typeof d.prefs.bridgeGaps !== 'boolean') d.prefs.bridgeGaps = true;
   for (const sp of d.spans) { sp.id = sp.id || uid(); sp.color = sp.color || 'slot:1'; }
   for (const m of d.metrics) {
     m.id = m.id || uid();
@@ -1038,7 +1049,8 @@ function drawLanes(g, C, L) {
     g.fillStyle = C.ink2;
     haloText(g, m.name || 'Metric', 27, y0 + 15);
 
-    // data: polyline segments (break on gaps > 3 days), markers at high zoom
+    // data: polyline segments (break on long gaps), markers at high zoom
+    const maxGap = data.prefs.bridgeGaps ? 3 : 1;
     const showMarkers = p >= 8;
     const pts = [];
     for (const d of entryDays) {
@@ -1052,7 +1064,7 @@ function drawLanes(g, C, L) {
     g.strokeStyle = col;
     let segStart = 0;
     for (let j = 0; j <= pts.length; j++) {
-      const brk = j === pts.length || (j > 0 && pts[j].d - pts[j - 1].d > 3);
+      const brk = j === pts.length || (j > 0 && pts[j].d - pts[j - 1].d > maxGap);
       if (brk) {
         const len = j - segStart;
         if (len >= 2) {
@@ -1065,7 +1077,7 @@ function drawLanes(g, C, L) {
       }
     }
     for (let j = 0; j < pts.length; j++) {
-      const lone = (j === 0 || pts[j].d - pts[j - 1].d > 3) && (j === pts.length - 1 || pts[j + 1].d - pts[j].d > 3);
+      const lone = (j === 0 || pts[j].d - pts[j - 1].d > maxGap) && (j === pts.length - 1 || pts[j + 1].d - pts[j].d > maxGap);
       if (!showMarkers && !lone) continue;
       const r = showMarkers ? 4 : 2.5;
       g.beginPath(); g.arc(pts[j].x, pts[j].y, r, 0, Math.PI * 2);
@@ -2171,6 +2183,7 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
 /* settings dialog */
 $('#btnSettings').addEventListener('click', () => {
   $('#setTitle').value = data.title;
+  $('#setBridge').checked = data.prefs.bridgeGaps;
   $('#gdClient').value = localStorage.getItem('timeliner:gdclient') || '';
   $('#gdOrigin').textContent = location.origin === 'null' ? 'file:// (no sign-in)' : location.origin;
   gdStatus('');
@@ -2198,6 +2211,11 @@ function armTwice(btn, label, fn) {
     fn();
   });
 }
+$('#setBridge').addEventListener('change', () => {
+  data.prefs.bridgeGaps = $('#setBridge').checked;
+  touchView();          // display preference: autosaved, but not nagged as an unsaved change
+  invalidate();
+});
 armTwice($('#setSample'), 'Load example data', () => { fileHandle = null; fileName = null; adopt(sampleDoc(), { fit: true }); $('#dlgSettings').close(); });
 armTwice($('#setNew'), 'New empty timeline', () => { fileHandle = null; fileName = null; adopt(newDoc(), { fit: true }); $('#dlgSettings').close(); });
 $('#gdBackup').addEventListener('click', gdBackup);
