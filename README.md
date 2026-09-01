@@ -56,6 +56,11 @@ and your data never leaves your machine unless you choose to back it up.
 
 ## Walkthrough
 
+![Animated walkthrough: logging a starred day, filling a series from the keyboard, and toggling the overlay view](docs/timeliner-walkthrough.gif)
+
+*Above: logging today (prefilled values, a headline, a ★), filling a gap with
+Series entry, then comparing all metrics in the Overlay view.*
+
 ### 1. Start a timeline
 
 Open `timeliner.html`. On the empty-state card choose **Add metrics** to define
