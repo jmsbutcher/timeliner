@@ -92,6 +92,20 @@ input, select, textarea { font: inherit; color: var(--ink); }
 .btn.star-on { color: var(--series-4); border-color: var(--series-4); }
 .btn:disabled { opacity: 0.45; cursor: default; }
 .btn.iconbtn { padding: 5px 8px; }
+.tb-num {
+  width: 50px; border: 1px solid var(--border); background: var(--plane); border-radius: 7px;
+  padding: 4px 4px; font-size: 12px; text-align: center; font-variant-numeric: tabular-nums;
+}
+.tb-num:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+#searchBox {
+  width: 180px; border: 1px solid var(--border); background: var(--plane); border-radius: 7px;
+  padding: 4px 8px; font-size: 12px;
+}
+#searchBox:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.search-count { color: var(--ink2); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.search-count.miss { color: var(--danger); }
+.search-count:empty { display: none; }
+mark { background: var(--series-4); color: #0b0b0b; border-radius: 2px; padding: 0 1px; }
 
 /* ============================== CHART ============================== */
 #chartwrap { position: relative; flex: 1; overflow: hidden; background: var(--surface); }
@@ -100,7 +114,7 @@ input, select, textarea { font: inherit; color: var(--ink); }
 #tooltip {
   position: absolute; z-index: 20; pointer-events: none;
   background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
-  box-shadow: var(--shadow); padding: 8px 10px; max-width: 280px;
+  box-shadow: var(--shadow); padding: 8px 10px; max-width: 320px;
   font-size: 12px;
 }
 #tooltip .tt-date { font-weight: 650; margin-bottom: 5px; }
@@ -108,8 +122,10 @@ input, select, textarea { font: inherit; color: var(--ink); }
 #tooltip .tt-key { width: 12px; height: 3px; border-radius: 2px; flex: none; }
 #tooltip .tt-name { color: var(--ink2); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #tooltip .tt-val { font-weight: 650; font-variant-numeric: tabular-nums; }
+#tooltip .tt-avg { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; margin-left: 2px; }
 #tooltip .tt-note { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--grid); color: var(--ink); }
 #tooltip .tt-note::before { content: "✎ "; color: var(--muted); }
+#tooltip .tt-body { margin-top: 4px; font-size: 11px; line-height: 1.45; color: var(--ink2); }
 #tooltip .tt-span { margin-top: 5px; display: flex; align-items: center; gap: 6px; color: var(--ink2); }
 #tooltip .tt-span i { width: 8px; height: 8px; border-radius: 3px; flex: none; }
 #tooltip .tt-hint { margin-top: 6px; color: var(--muted); font-size: 11px; }
@@ -157,6 +173,7 @@ dialog select, dialog textarea {
 }
 dialog input:focus, dialog select:focus, dialog textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 dialog textarea { resize: vertical; min-height: 90px; }
+.day-wd { color: var(--ink2); font-weight: 600; white-space: nowrap; }
 .inline { display: flex; gap: 8px; align-items: center; }
 .inline > * { width: auto; }
 .hint { color: var(--muted); font-size: 11px; margin-top: 4px; }
@@ -247,6 +264,8 @@ legend { color: var(--ink2); font-size: 12px; padding: 0 4px; }
     <button class="btn" id="btnToday" title="Center on today (T)">Today</button>
     <button class="btn" id="btnFit" title="Fit all data (F)">Fit</button>
     <button class="btn" id="btnOverlay" title="Superimpose all metrics on one graph, each scaled to its own range (O)">Overlay</button>
+    <button class="btn" id="btnAvg" title="Show each metric's trailing moving average as a dotted line (A)">Avg</button>
+    <input class="tb-num" type="number" id="avgDays" min="2" max="365" step="1" title="Moving-average window, in days" hidden>
     <button class="btn iconbtn" id="btnZoomOut" title="Zoom out (−)">−</button>
     <button class="btn iconbtn" id="btnZoomIn" title="Zoom in (+)">+</button>
   </div>
@@ -256,6 +275,13 @@ legend { color: var(--ink2); font-size: 12px; padding: 0 4px; }
     <button class="btn" id="btnSeries" title="Fill one metric across many days from the keyboard (Q)">Series</button>
     <button class="btn" id="btnMetrics" title="Manage tracked metrics">Metrics</button>
     <button class="btn" id="btnTable" title="All data as a table">Table</button>
+  </div>
+  <div class="tb-group">
+    <input type="search" id="searchBox" placeholder="Search journal…  ( / )" autocomplete="off" spellcheck="false"
+           title="Find days whose note contains every word. Enter = next match, Shift+Enter = previous, Esc = clear">
+    <span class="search-count" id="searchCount"></span>
+    <button class="btn iconbtn" id="searchPrev" type="button" title="Previous match (Shift+Enter)" hidden>‹</button>
+    <button class="btn iconbtn" id="searchNext" type="button" title="Next match (Enter)" hidden>›</button>
   </div>
   <div class="tb-spacer"></div>
   <div class="tb-group">
@@ -286,7 +312,7 @@ legend { color: var(--ink2); font-size: 12px; padding: 0 4px; }
 </main>
 
 <footer class="statusbar">
-  <span>Drag to pan · Scroll to zoom · Click a day to log it · Drag on the span strip to add an event</span>
+  <span>Drag to pan · Scroll to zoom · Click a day to log it · Drag on the span strip to add an event · / to search</span>
   <span class="sb-dirty" id="dirtyFlag" hidden title="Changes since the last Save to file (autosave to this browser is still on)">● Unsaved changes — Ctrl+S to save</span>
   <span class="sb-right" id="statusRight">—</span>
 </footer>
@@ -296,6 +322,7 @@ legend { color: var(--ink2); font-size: 12px; padding: 0 4px; }
   <div class="dlg-head">
     <h2>Day entry</h2>
     <button class="btn iconbtn" id="dayStar" type="button" title="Star this day — mark it as significant">☆</button>
+    <span class="day-wd" id="dayWeekday"></span>
     <input type="date" id="dayDate" style="width:auto">
   </div>
   <div class="dlg-body">
@@ -466,6 +493,7 @@ const DAY_MS = 86400000;
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const MONTHS_S = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const WDAYS_S = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const WDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -492,6 +520,38 @@ function el(tag, cls, text) {
   if (cls) e.className = cls;
   if (text !== undefined) e.textContent = text;
   return e;
+}
+// Append `text` to `parent`, wrapping every (case-insensitive) occurrence of a search word in <mark>.
+function appendHighlighted(parent, text, words) {
+  if (!words || !words.length) { parent.append(document.createTextNode(text)); return; }
+  const lower = text.toLowerCase();
+  let pos = 0;
+  while (pos < text.length) {
+    let best = -1, len = 0;
+    for (const w of words) {
+      const i = lower.indexOf(w, pos);
+      if (i !== -1 && (best === -1 || i < best || (i === best && w.length > len))) { best = i; len = w.length; }
+    }
+    if (best === -1) break;
+    if (best > pos) parent.append(document.createTextNode(text.slice(pos, best)));
+    parent.append(el('mark', '', text.slice(best, best + len)));
+    pos = best + len;
+  }
+  if (pos < text.length) parent.append(document.createTextNode(text.slice(pos)));
+}
+// Whitespace-collapsed excerpt of `text`, at most `max` chars; when the text is long and the
+// first search hit sits past the cut, the window slides so the hit is in view.
+function excerpt(text, max, words) {
+  const s = text.replace(/\s+/g, ' ').trim();
+  if (s.length <= max) return s;
+  const lower = s.toLowerCase();
+  let from = 0;
+  const firstHit = Math.min(...(words || []).map(w => { const i = lower.indexOf(w); return i === -1 ? Infinity : i; }));
+  if (Number.isFinite(firstHit) && firstHit > max * 0.6) from = Math.max(0, firstHit - Math.floor(max * 0.3));
+  let out = s.slice(from, from + max);
+  if (from > 0) out = '…' + out.replace(/^\S*\s/, '');
+  if (from + max < s.length) out = out.replace(/\s\S*$/, '') + '…';
+  return out;
 }
 
 /* ------------------------------ palette ------------------------------ */
@@ -533,7 +593,7 @@ function newDoc() {
   return {
     app: 'timeliner', version: 1, docId: 'default',
     title: 'My Timeline', metrics: [], entries: {}, spans: [], view: null,
-    prefs: { bridgeGaps: true, overlay: { on: false, hidden: {} } },
+    prefs: { bridgeGaps: true, overlay: { on: false, hidden: {} }, avg: { on: false, days: 7 } },
   };
 }
 let data = newDoc();
@@ -549,6 +609,7 @@ let spanRowCount = 1;
 let hits = [];                      // clickable regions rebuilt each render
 let hover = null;                   // {x, y, day}
 let fileHandle = null, fileName = null;
+const search = { q: '', words: [], days: [], set: new Set(), idx: -1 };   // keyword search over notes
 
 function reindex() {
   entryByDay = new Map();
@@ -574,6 +635,7 @@ function reindex() {
     spanRows.set(sp.id, r);
   }
   spanRowCount = clamp(rowEnds.length, 1, 4);
+  if (search.words.length) searchRefresh();
 }
 
 function hasAnyData() {
@@ -643,6 +705,9 @@ function validateDoc(d) {
   if (!d.prefs.overlay || typeof d.prefs.overlay !== 'object') d.prefs.overlay = {};
   d.prefs.overlay.on = !!d.prefs.overlay.on;
   if (!d.prefs.overlay.hidden || typeof d.prefs.overlay.hidden !== 'object') d.prefs.overlay.hidden = {};
+  if (!d.prefs.avg || typeof d.prefs.avg !== 'object') d.prefs.avg = {};
+  d.prefs.avg.on = !!d.prefs.avg.on;
+  d.prefs.avg.days = clamp(Math.round(Number(d.prefs.avg.days)) || 7, 2, 365);
   for (const sp of d.spans) { sp.id = sp.id || uid(); sp.color = sp.color || 'slot:1'; }
   for (const m of d.metrics) {
     m.id = m.id || uid();
@@ -666,6 +731,7 @@ function adopt(doc, { fit = false, dirty: wasDirty = false } = {}) {
   }
   setDirty(wasDirty);
   syncOverlayBtn();
+  syncAvgUI();
   flushSave();
   updateEmptyState();
   invalidate();
@@ -720,7 +786,7 @@ function invalidate() {
 
 function layout() {
   const spanH = 12 + spanRowCount * 18;
-  const axisH = 46;
+  const axisH = 52;
   const noteH = 24;
   return {
     axisH,
@@ -764,6 +830,7 @@ function render() {
   g.fillRect(0, 0, W, H);
 
   drawSpanBands(g, C, L);
+  drawSearchBands(g, C, L);
   drawLanes(g, C, L);
   drawTimeAxis(g, C, L);
   drawSpanStrip(g, C, L);
@@ -809,18 +876,30 @@ function drawTimeAxis(g, C, L) {
   const yr = ymd(d0);
 
   if (p >= 14) {
-    /* DAY MODE: day numbers, week ticks, "July 2026" majors */
+    /* DAY MODE: weekday letters over day numbers, weekend shading, week ticks, "July 2026" majors */
+    const wdLabels = p >= 26 ? WDAYS_S.map(s => s.slice(0, 2)) : WDAYS_S.map(s => s[0]);
     for (let d = d0; d <= d1; d++) {
       const x = xOf(d), pt = ymd(d);
       const first = pt.d === 1;
+      const weekend = pt.wd === 0 || pt.wd === 6;
+      if (weekend) {
+        g.fillStyle = withAlpha(C.ink, 0.045);
+        g.fillRect(x, L.axisH - 34, p, 33);
+      }
       if (first) { gridLine(x, C.grid); tick(x, 12, C.axis); }
       else if (pt.wd === 1) tick(x, 9, C.axis);
       else tick(x, 5, C.grid);
       if (p >= 17 || pt.wd === 1 || first) {
         g.font = `10px ${F}`;
-        g.fillStyle = pt.wd === 0 || pt.wd === 6 ? C.muted : C.ink2;
+        g.fillStyle = weekend ? C.muted : C.ink2;
         const s = String(pt.d);
         g.fillText(s, xC(d) - g.measureText(s).width / 2, L.axisH - 16);
+      }
+      if (p >= 17) {
+        g.font = `8px ${F}`;
+        g.fillStyle = C.muted;
+        const s = wdLabels[pt.wd];
+        g.fillText(s, xC(d) - g.measureText(s).width / 2, L.axisH - 27);
       }
     }
     let { y, m } = yr;
@@ -902,6 +981,25 @@ function drawSpanBands(g, C, L) {
   }
 }
 
+/* ---- keyword-search highlight columns ---- */
+function drawSearchBands(g, C, L) {
+  if (!search.days.length) return;
+  const col = C.series[3];           // amber, matching <mark> in the tooltip and note viewer
+  const cur = search.days[search.idx];
+  const w = Math.max(view.ppd, 2);
+  for (const d of search.days) {
+    const x = xOf(d);
+    if (x + w < 0 || x > W) continue;
+    g.fillStyle = withAlpha(col, d === cur ? 0.26 : 0.12);
+    g.fillRect(x, L.axisH, w, H - L.axisH);
+    if (d === cur) {
+      g.fillStyle = withAlpha(col, 0.85);
+      g.fillRect(x, L.axisH, 1, H - L.axisH);
+      g.fillRect(x + w - 1, L.axisH, 1, H - L.axisH);
+    }
+  }
+}
+
 /* ---- span strip (interactive bars) ---- */
 function drawSpanStrip(g, C, L) {
   g.strokeStyle = C.grid;
@@ -946,6 +1044,7 @@ function drawNoteStrip(g, C, L) {
       const x = xC(d);
       const e = entryByDay.get(d);
       const starred = !!e.star;
+      const found = search.set.has(d);
       const note = e.note || {};
       const title = (note.title || '').trim() || (note.body || '').trim().split('\n')[0];
       if (starred) {
@@ -956,20 +1055,21 @@ function drawNoteStrip(g, C, L) {
         g.fillStyle = STAR;
         g.fillText('★', x - sw / 2, yMid + 4.5);
       } else {
-        g.fillStyle = C.ink2;
-        g.beginPath(); g.arc(x, yMid, 3.5, 0, Math.PI * 2); g.fill();
+        g.fillStyle = found ? STAR : C.ink2;
+        g.beginPath(); g.arc(x, yMid, found ? 4.5 : 3.5, 0, Math.PI * 2); g.fill();
         g.lineWidth = 2; g.strokeStyle = C.surface; g.stroke();
       }
       let hit = { x: x - 8, y: yMid - 9, w: 16, h: 18, kind: 'note', day: d };
-      // starred headlines surface earlier, bolder, and longer — they should pull the eye
-      if (title && (p >= 48 || (starred && p >= 20))) {
-        g.font = starred ? `600 11px ${F}` : `11px ${F}`;
+      // starred headlines (and search matches) surface earlier, bolder, and longer — they should pull the eye
+      const lift = starred || found;
+      if (title && (p >= 48 || (lift && p >= 20))) {
+        g.font = lift ? `600 11px ${F}` : `11px ${F}`;
         const next = i + 1 < visible.length ? xC(visible[i + 1]) : Infinity;
-        const maxW = clamp(next - x - 18, Math.min(p - 14, 60), starred ? 330 : 230);
+        const maxW = clamp(next - x - 18, Math.min(p - 14, 60), lift ? 330 : 230);
         let t = title;
         while (t.length > 1 && g.measureText(t + '…').width > maxW) t = t.slice(0, -1);
         if (t !== title) t += '…';
-        g.fillStyle = starred ? C.ink : C.ink2;
+        g.fillStyle = lift ? C.ink : C.ink2;
         haloText(g, t, x + 8, yMid + 3.5);
         hit.w = 14 + 8 + g.measureText(t).width;
       }
@@ -986,8 +1086,9 @@ function drawNoteStrip(g, C, L) {
     for (const [b, days] of bins) {
       const x = b * 16;
       const anyStar = days.some(dd => !!entryByDay.get(dd).star);
+      const anyFound = days.some(dd => search.set.has(dd));
       if (days.length === 1) {
-        if (anyStar) {
+        if (anyStar || anyFound) {
           g.font = `10px ${F}`;
           g.fillStyle = STAR;
           g.fillText('★', x - g.measureText('★').width / 2, yMid + 3.5);
@@ -1000,7 +1101,7 @@ function drawNoteStrip(g, C, L) {
         g.font = `600 9.5px ${F}`;
         const label = (anyStar ? '★' : '') + days.length;
         const w = Math.max(16, g.measureText(label).width + 9);
-        g.fillStyle = anyStar ? withAlpha(STAR, 0.3) : C.grid;
+        g.fillStyle = anyStar || anyFound ? withAlpha(STAR, 0.3) : C.grid;
         rrect(g, x - w / 2, yMid - 7, w, 14, 7); g.fill();
         g.fillStyle = C.ink2;
         g.fillText(label, x - g.measureText(label).width / 2, yMid + 3.5);
@@ -1054,6 +1155,75 @@ function drawSeries(g, C, pts, col, maxGap, showMarkers) {
     g.fillStyle = col; g.fill();
     g.lineWidth = 2; g.strokeStyle = C.surface; g.stroke();
   }
+}
+
+/* ---- moving average: trailing window, computed in each metric's normalized units ---- */
+// Normalized value for `m` on `day`, or null when none is recorded.
+function normAt(m, day) {
+  const e = entryByDay.get(day);
+  const norm = e && e.v ? metricNorm(m, e.v[m.id]) : null;
+  return norm === null || norm === undefined ? null : norm;
+}
+// Average over the `days`-day window ending on `day` (null when the window holds no value).
+function movingAvgAt(m, day, days) {
+  let sum = 0, cnt = 0;
+  for (let d = day - days + 1; d <= day; d++) {
+    const n = normAt(m, d);
+    if (n !== null) { sum += n; cnt++; }
+  }
+  return cnt ? sum / cnt : null;
+}
+// One point per day in [a, b] (clipped to the metric's recorded range): {d, norm}. Days whose
+// window holds no value are skipped, so the line breaks across long gaps.
+function movingAvgSeries(m, a, b, days) {
+  const pts = [];
+  for (const d of entryDays) {
+    const n = normAt(m, d);
+    if (n !== null) pts.push({ d, norm: n });
+  }
+  if (pts.length < 2) return [];
+  const lo = Math.max(a, pts[0].d), hi = Math.min(b, pts[pts.length - 1].d);
+  const out = [];
+  let i = 0, j = 0, sum = 0, cnt = 0;
+  for (let d = lo; d <= hi; d++) {
+    while (j < pts.length && pts[j].d <= d) { sum += pts[j].norm; cnt++; j++; }
+    while (i < j && pts[i].d <= d - days) { sum -= pts[i].norm; cnt--; i++; }
+    if (cnt > 0) out.push({ d, norm: clamp(sum / cnt, 0, 1) });
+  }
+  return out;
+}
+// Human-readable average: back on the metric's own scale, or the nearest label.
+function fmtAvg(m, norm) {
+  if (m.type === 'scale') return String(Math.round((m.min + norm * (m.max - m.min)) * 10) / 10);
+  const k = m.levels.length;
+  return '≈' + m.levels[clamp(Math.round(norm * (k - 1)), 0, k - 1)];
+}
+function drawAvgLine(g, pts, col) {
+  if (pts.length < 2) return;
+  g.save();
+  g.strokeStyle = col; g.lineWidth = 2.4; g.lineCap = 'round'; g.lineJoin = 'round';
+  g.setLineDash([0.01, 5.5]);
+  g.beginPath();
+  for (let j = 0; j < pts.length; j++) {
+    if (j === 0 || pts[j].d - pts[j - 1].d > 1) g.moveTo(pts[j].x, pts[j].y);
+    else g.lineTo(pts[j].x, pts[j].y);
+  }
+  g.stroke();
+  g.restore();
+}
+// Small "⋯ 7-day avg" legend, right-aligned at xRight.
+function drawAvgLegend(g, C, xRight, y) {
+  g.font = '10px system-ui, -apple-system, "Segoe UI", sans-serif';
+  const s = `${data.prefs.avg.days}-day avg`;
+  const tw = g.measureText(s).width;
+  const x = xRight - tw;
+  g.fillStyle = C.muted;
+  haloText(g, s, x, y);
+  g.save();
+  g.strokeStyle = C.muted; g.lineWidth = 2; g.lineCap = 'round';
+  g.setLineDash([0.01, 4.5]);
+  g.beginPath(); g.moveTo(x - 24, y - 3.5); g.lineTo(x - 6, y - 3.5); g.stroke();
+  g.restore();
 }
 
 function noMetricsMessage(g, C, L) {
@@ -1110,6 +1280,7 @@ function drawLanes(g, C, L) {
     g.font = `600 11.5px ${F}`;
     g.fillStyle = C.ink2;
     haloText(g, m.name || 'Metric', 27, y0 + 15);
+    if (data.prefs.avg.on) drawAvgLegend(g, C, W - 8, y0 + 15);
 
     // data: polyline segments (break on long gaps), markers at high zoom
     const maxGap = data.prefs.bridgeGaps ? 3 : 1;
@@ -1122,7 +1293,14 @@ function drawLanes(g, C, L) {
       if (norm === null || norm === undefined) continue;
       pts.push({ d, x: xC(d), y: yFor(dispNorm(m, norm)) });
     }
+    // with the trend line on, the raw line steps back a little so the trend reads first
+    if (data.prefs.avg.on) g.globalAlpha = 0.6;
     drawSeries(g, C, pts, col, maxGap, showMarkers);
+    g.globalAlpha = 1;
+    if (data.prefs.avg.on) {
+      const avg = movingAvgSeries(m, d0 - 1, d1 + 1, data.prefs.avg.days);
+      drawAvgLine(g, avg.map(q => ({ d: q.d, x: xC(q.d), y: yFor(dispNorm(m, q.norm)) })), col);
+    }
   });
 }
 
@@ -1160,6 +1338,7 @@ function drawOverlay(g, C, L) {
   g.fillStyle = C.muted;
   haloText(g, 'each metric’s max', 8, yFor(1) + 12);
   haloText(g, 'each metric’s min', 8, yFor(0) - 5);
+  if (data.prefs.avg.on) drawAvgLegend(g, C, W - 8, yFor(1) + 12);
 
   const maxGap = data.prefs.bridgeGaps ? 3 : 1;
   const showMarkers = view.ppd >= 8;
@@ -1174,7 +1353,14 @@ function drawOverlay(g, C, L) {
       if (norm === null || norm === undefined) continue;
       pts.push({ d, x: xC(d), y: yFor(dispNorm(m, norm)) });
     }
-    drawSeries(g, C, pts, resolveColor(m.color), maxGap, showMarkers);
+    const col = resolveColor(m.color);
+    if (data.prefs.avg.on) g.globalAlpha = 0.6;
+    drawSeries(g, C, pts, col, maxGap, showMarkers);
+    g.globalAlpha = 1;
+    if (data.prefs.avg.on) {
+      const avg = movingAvgSeries(m, d0 - 1, d1 + 1, data.prefs.avg.days);
+      drawAvgLine(g, avg.map(q => ({ d: q.d, x: xC(q.d), y: yFor(dispNorm(m, q.norm)) })), col);
+    }
   }
 
   // clickable legend chips (click to show/hide a metric)
@@ -1275,11 +1461,27 @@ function updateTooltip(px, py, day) {
     const key = el('i', 'tt-key');
     key.style.background = resolveColor(m.color);
     row.append(key, el('span', 'tt-name', m.name), el('span', 'tt-val', fmtVal(m, e && e.v ? e.v[m.id] : undefined)));
+    if (data.prefs.avg.on) {
+      const a = movingAvgAt(m, day, data.prefs.avg.days);
+      if (a !== null) row.append(el('span', 'tt-avg', `· avg ${fmtAvg(m, a)}`));
+    }
     tooltip.append(row);
   }
   if (e && e.note && ((e.note.title || '').trim() || (e.note.body || '').trim())) {
-    const t = (e.note.title || '').trim() || (e.note.body || '').trim().split('\n')[0].slice(0, 80);
-    tooltip.append(el('div', 'tt-note', t));
+    const title = (e.note.title || '').trim();
+    const body = (e.note.body || '').trim();
+    const firstLine = body.split('\n')[0];
+    const head = title || firstLine.slice(0, 80);
+    const rest = title ? body : body.slice(firstLine.length);   // no headline: the first line serves as one
+    const hd = el('div', 'tt-note');
+    appendHighlighted(hd, head, search.words);
+    tooltip.append(hd);
+    const ex = excerpt(rest, 280, search.words);
+    if (ex) {
+      const bd = el('div', 'tt-body');
+      appendHighlighted(bd, ex, search.words);
+      tooltip.append(bd);
+    }
   }
   for (const sp of spansHere) {
     const row = el('div', 'tt-span');
@@ -1485,6 +1687,8 @@ document.addEventListener('keydown', e => {
     case 'n': case 'N': openDayEditor(todayDay()); break;
     case 'q': case 'Q': openSeries(); break;
     case 'o': case 'O': toggleOverlay(); break;
+    case 'a': case 'A': toggleAvg(); break;
+    case '/': e.preventDefault(); searchBox.focus(); searchBox.select(); break;
   }
 });
 
@@ -1517,6 +1721,7 @@ function lastValueBefore(day, mid) {
 }
 function buildDayForm(day) {
   const e = entryByDay.get(day);
+  $('#dayWeekday').textContent = WDAYS[ymd(day).wd];
   dayStarred = !!(e && e.star);
   syncDayStar();
   const box = $('#dayMetrics');
@@ -1775,7 +1980,7 @@ function openNoteViewer(day) {
   const e = entryByDay.get(day);
   if (!e || !e.note) return openDayEditor(day);
   noteDay = day;
-  $('#noteTitle').textContent = (e.star ? '★ ' : '') + ((e.note.title || '').trim() || 'Journal entry');
+  paintNoteTitle(e);
   syncNoteStar();
   $('#noteDate').textContent = fmtHuman(day);
   const box = $('#noteBody');
@@ -1786,7 +1991,7 @@ function openNoteViewer(day) {
       const pEl = el('p');
       const lines = para.split('\n');
       lines.forEach((ln, i) => {
-        pEl.append(document.createTextNode(ln));
+        appendHighlighted(pEl, ln, search.words);
         if (i < lines.length - 1) pEl.append(document.createElement('br'));
       });
       box.append(pEl);
@@ -1795,6 +2000,11 @@ function openNoteViewer(day) {
     box.append(el('p', 'hint', '(no journal text — headline only)'));
   }
   dlgNote.showModal();
+}
+function paintNoteTitle(e) {
+  const t = $('#noteTitle');
+  t.textContent = e.star ? '★ ' : '';
+  appendHighlighted(t, (e.note.title || '').trim() || 'Journal entry', search.words);
 }
 $('#noteEdit').addEventListener('click', () => { dlgNote.close(); openDayEditor(noteDay); });
 $('#noteClose').addEventListener('click', () => dlgNote.close());
@@ -1811,7 +2021,7 @@ $('#noteStar').addEventListener('click', () => {
   if (e.star) delete e.star; else e.star = true;
   reindex(); touch(); invalidate();
   syncNoteStar();
-  $('#noteTitle').textContent = (e.star ? '★ ' : '') + ((e.note.title || '').trim() || 'Journal entry');
+  paintNoteTitle(e);
 });
 
 /* ------------------------------ span dialog ------------------------------ */
@@ -2313,6 +2523,102 @@ function toggleOverlay() {
 }
 function syncOverlayBtn() { $('#btnOverlay').classList.toggle('on', data.prefs.overlay.on); }
 $('#btnOverlay').addEventListener('click', toggleOverlay);
+
+/* moving average */
+function toggleAvg() {
+  data.prefs.avg.on = !data.prefs.avg.on;
+  syncAvgUI();
+  touchView();          // display preference, like Overlay
+  invalidate();
+}
+function syncAvgUI() {
+  const on = data.prefs.avg.on;
+  $('#btnAvg').classList.toggle('on', on);
+  const inp = $('#avgDays');
+  inp.hidden = !on;
+  if (document.activeElement !== inp) inp.value = data.prefs.avg.days;
+}
+$('#btnAvg').addEventListener('click', toggleAvg);
+$('#avgDays').addEventListener('input', () => {
+  const n = Math.round(Number($('#avgDays').value));
+  if (Number.isFinite(n) && n >= 2 && n <= 365) { data.prefs.avg.days = n; touchView(); invalidate(); }
+});
+$('#avgDays').addEventListener('blur', syncAvgUI);
+$('#avgDays').addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); $('#avgDays').blur(); canvas.focus(); }
+});
+
+/* keyword search: every word must appear in the day's headline or journal text */
+const searchBox = $('#searchBox');
+let searchTimer = null;
+const noteText = e => e && e.note ? `${e.note.title || ''}\n${e.note.body || ''}`.toLowerCase() : '';
+const matchDays = () => entryDays.filter(d => {
+  const t = noteText(entryByDay.get(d));
+  return t && search.words.every(w => t.includes(w));
+});
+// Re-run the current query after data changes, keeping the current match if it still matches.
+function searchRefresh() {
+  const cur = search.idx >= 0 ? search.days[search.idx] : null;
+  search.days = matchDays();
+  search.set = new Set(search.days);
+  search.idx = cur !== null ? search.days.indexOf(cur) : -1;
+  if (search.idx === -1 && search.days.length) search.idx = 0;
+  syncSearchUI();
+}
+function runSearch(q) {
+  const prevDay = search.idx >= 0 ? search.days[search.idx] : null;
+  search.q = q;
+  search.words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  search.days = search.words.length ? matchDays() : [];
+  search.set = new Set(search.days);
+  search.idx = -1;
+  if (search.days.length) {
+    // stay on the current match while the query is refined; otherwise go to the match nearest the view
+    const target = prevDay !== null && search.set.has(prevDay) ? prevDay : dayAt(W / 2);
+    let best = 0;
+    search.days.forEach((d, i) => { if (Math.abs(d - target) < Math.abs(search.days[best] - target)) best = i; });
+    search.idx = best;
+    searchGo(0);
+  }
+  syncSearchUI();
+  invalidate();
+}
+function searchGo(delta) {
+  const n = search.days.length;
+  if (!n) return;
+  search.idx = ((search.idx + delta) % n + n) % n;
+  const day = search.days[search.idx];
+  centerOn(day, view.ppd < 12 ? 26 : undefined);     // zoom in far enough to read the headline
+  syncSearchUI();
+}
+function syncSearchUI() {
+  const n = search.days.length;
+  const c = $('#searchCount');
+  c.textContent = !search.words.length ? '' : n ? `${search.idx + 1} / ${n}` : 'no matches';
+  c.classList.toggle('miss', search.words.length > 0 && n === 0);
+  $('#searchPrev').hidden = $('#searchNext').hidden = n < 2;
+}
+searchBox.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => runSearch(searchBox.value.trim()), 220);
+});
+searchBox.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    clearTimeout(searchTimer);
+    const q = searchBox.value.trim();
+    if (q !== search.q) runSearch(q); else searchGo(e.shiftKey ? -1 : 1);
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    clearTimeout(searchTimer);
+    searchBox.value = '';
+    runSearch('');
+    searchBox.blur();
+    canvas.focus();
+  }
+});
+$('#searchPrev').addEventListener('click', () => searchGo(-1));
+$('#searchNext').addEventListener('click', () => searchGo(1));
 $('#btnZoomIn').addEventListener('click', () => zoomAt(W / 2, 1.35));
 $('#btnZoomOut').addEventListener('click', () => zoomAt(W / 2, 1 / 1.35));
 $('#btnAddNote').addEventListener('click', () => openDayEditor(todayDay()));

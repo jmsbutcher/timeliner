@@ -26,6 +26,16 @@ and your data never leaves your machine unless you choose to back it up.
 - **Overlay view.** Toggle **Overlay** (or press **O**) to superimpose every
   metric on one graph, each scaled to its own min–max range. Click the legend
   chips to show or hide individual metrics.
+- **Moving average.** Toggle **Avg** (or press **A**) to draw each metric's
+  trailing moving average as a dotted line over the raw data, with the window
+  (2–365 days) adjustable right in the toolbar — the easy way to see the
+  longer-term trend under day-to-day noise. The hover readout shows the
+  average next to each value while it's on.
+- **Keyword search.** Type in the search box (or press **/**) to find the days
+  whose headline or journal contains every word. Matches are highlighted on
+  the chart, the view jumps to the nearest one, **Enter** / **Shift+Enter**
+  step through the rest, and the matched words are marked in the hover
+  readout and the note viewer.
 - **Starred days.** Mark a significant day with a ★ — it stands out on the
   note strip and its headline shows earlier, bolder, and longer, pulling the
   reader toward that day's journal entry.
@@ -39,13 +49,14 @@ and your data never leaves your machine unless you choose to back it up.
   edges to extend it, click it to rename/recolor/delete.
 - **Zoom & scroll.** Mouse wheel zooms around the cursor (decades down to
   individual days); drag to pan; trackpad pinch and two-finger scroll work too.
-  The axis adapts: year labels → month labels → day numbers with week/month
-  tick emphasis.
+  The axis adapts: year labels → month labels → day numbers with weekday
+  initials, weekend shading, and week/month tick emphasis.
 - **Notes that scale.** Zoomed in, notes show as clickable headlines; zoomed
   out they collapse into dots, then into count bubbles (click a bubble to zoom
   into it).
 - **Hover readout.** A crosshair follows the pointer and a tooltip shows every
-  metric's value, the note, and any events for that day.
+  metric's value, the note headline with the first few hundred characters of
+  the journal entry, and any events for that day.
 - **Table view** of all entries (click a row to edit that day).
 - **Unsaved-changes guard.** Edits are autosaved to the browser immediately,
   and the app tells you when your *file* is out of date — and warns before you
@@ -76,7 +87,8 @@ For each metric pick a name, a color, and a scale:
 ### 2. Log a day
 
 Click a day on the chart, or press **N** for today. The **Day entry** dialog
-shows a row per metric plus a headline and a journal field.
+shows the day of the week and date, a row per metric, and a headline and a
+journal field.
 
 ![Day entry dialog with values prefilled from the previous entry](docs/day-entry.jpg)
 
@@ -240,6 +252,8 @@ created itself.
 | `N` | log today |
 | `Q` | series entry (one metric, many days) |
 | `O` | toggle overlay view |
+| `A` | toggle moving-average lines |
+| `/` | jump to the search box (`Enter` / `Shift+Enter` = next / previous match, `Esc` = clear) |
 | `Ctrl+S` / `Ctrl+Shift+S` | save / save as (works anywhere, even inside dialogs) |
 | `Ctrl+O` | open file |
 
